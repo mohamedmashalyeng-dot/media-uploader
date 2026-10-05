@@ -2,13 +2,13 @@
   "name": "media-uploader",
   "version": "1.0.0",
   "private": true,
-  "description": "Private media library backed by Cloudflare R2 and Neon PostgreSQL.",
+  "description": "Private media library backed by S3-compatible object storage and Neon PostgreSQL.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "start:prod": "node server.js",
     "migrate": "node scripts/migrate.js",
-    "check": "node --check server.js && node --check app.js && node --check lib/media-utils.js && node --check lib/r2-storage.js && node --check scripts/migrate.js && node --check scripts/hostinger-preflight.js",
+    "check": "node --check server.js && node --check app.js && node --check lib/media-utils.js && node --check lib/object-storage.js && node --check scripts/migrate.js && node --check scripts/hostinger-preflight.js",
     "hostinger:check": "node scripts/hostinger-preflight.js"
   },
   "dependencies": {

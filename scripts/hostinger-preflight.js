@@ -10,7 +10,7 @@ const requiredFiles = [
   'package.json',
   'package-lock.json',
   'lib/media-utils.js',
-  'lib/r2-storage.js',
+  'lib/object-storage.js',
   'sql/2026-10-05_app_media.sql'
 ];
 

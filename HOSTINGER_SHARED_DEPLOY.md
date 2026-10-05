@@ -62,11 +62,13 @@ DATABASE_URL=
 SESSION_SECRET=
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
-R2_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
+S3_ENDPOINT=
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_BUCKET_NAME=
+S3_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
+S3_FORCE_PATH_STYLE=false
 ```
 
 Shared hosting friendly media limits:
@@ -78,7 +80,7 @@ MEDIA_MAX_VIDEO_MB=500
 MEDIA_MAX_DOCUMENT_MB=50
 ```
 
-The app sends videos and files larger than 15 MB directly from the browser to Cloudflare R2 using presigned URLs, so Hostinger does not need to buffer large files.
+The app sends videos and files larger than 15 MB directly from the browser to object storage using presigned URLs, so Hostinger does not need to buffer large files.
 
 ## Database Migration
 
@@ -88,9 +90,11 @@ Run once after adding `DATABASE_URL`:
 npm run migrate
 ```
 
-## Cloudflare R2 CORS
+## Object Storage CORS
 
-Add your Hostinger app domain to R2 CORS:
+Use any S3-compatible provider, such as AWS S3, Backblaze B2, Wasabi, DigitalOcean Spaces, or Cloudflare R2.
+
+Add your Hostinger app domain to the bucket CORS:
 
 ```json
 [

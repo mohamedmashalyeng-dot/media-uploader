@@ -154,7 +154,7 @@ function libraryView() {
           <input id="file-input" type="file" multiple hidden>
         </div>
       </header>
-      ${state.storageConfigured ? '' : '<div class="notice danger">Cloudflare R2 is not configured. Add the R2 environment variables before uploading.</div>'}
+      ${state.storageConfigured ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
       <section class="drop-zone" id="drop-zone">
         <div>${icon('upload')}<strong>Drag files here</strong><span>or choose files from your device</span></div>
         <button class="button" data-act="browse">Browse Files</button>

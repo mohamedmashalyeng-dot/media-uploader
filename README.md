@@ -17,11 +17,13 @@ DATABASE_URL=
 SESSION_SECRET=
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
-R2_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
+S3_ENDPOINT=
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_BUCKET_NAME=
+S3_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
+S3_FORCE_PATH_STYLE=false
 ```
 
 3. Apply the database migration:
@@ -60,13 +62,27 @@ Before deployment, read:
 HOSTINGER_SHARED_DEPLOY.md
 ```
 
-Large videos and files above 15 MB upload directly from the browser to Cloudflare R2 through presigned URLs, which keeps Hostinger shared hosting memory usage low.
+Large videos and files above 15 MB upload directly from the browser to object storage through presigned URLs, which keeps Hostinger shared hosting memory usage low.
 
-## Cloudflare R2
+## Object Storage
 
-Create an R2 bucket, generate S3-compatible API credentials, connect the custom domain `media.kentbusinesscollege.com`, and configure CORS to allow authenticated browser uploads from your dashboard origin.
+Use any S3-compatible provider, such as AWS S3, Backblaze B2, Wasabi, DigitalOcean Spaces, or Cloudflare R2.
 
-Suggested R2 CORS rule:
+Backblaze B2 example:
+
+```env
+S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+S3_REGION=us-west-004
+S3_ACCESS_KEY_ID=your-key-id
+S3_SECRET_ACCESS_KEY=your-application-key
+S3_BUCKET_NAME=your-bucket
+S3_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
+S3_FORCE_PATH_STYLE=false
+```
+
+Configure the bucket/custom domain and add CORS to allow authenticated browser uploads from your dashboard origin.
+
+Suggested CORS rule:
 
 ```json
 [

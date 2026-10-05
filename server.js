@@ -12,9 +12,9 @@ const {
   createPublicUrl,
   deleteObject,
   headObject,
-  r2Configured,
+  storageConfigured,
   uploadObject
-} = require('./lib/r2-storage');
+} = require('./lib/object-storage');
 const {
   cleanMime,
   createObjectKey,
@@ -372,11 +372,11 @@ function parseMultipartUpload(req, user) {
       catch (error) { rejected = error; }
       file.on('data', chunk => {
         size += chunk.length;
-        if (!rejected && size > backendLimit) rejected = statusError(413, 'Use direct R2 upload for files larger than the backend upload limit.', 'USE_PRESIGNED_UPLOAD');
+        if (!rejected && size > backendLimit) rejected = statusError(413, 'Use direct storage upload for files larger than the backend upload limit.', 'USE_PRESIGNED_UPLOAD');
         chunks.push(chunk);
       });
       file.on('limit', () => {
-        rejected = statusError(413, 'Use direct R2 upload for files larger than the backend upload limit.', 'USE_PRESIGNED_UPLOAD');
+        rejected = statusError(413, 'Use direct storage upload for files larger than the backend upload limit.', 'USE_PRESIGNED_UPLOAD');
       });
       file.on('end', () => {
         if (!rejected) {
@@ -501,7 +501,7 @@ async function handleApi(req, res) {
       ok: true,
       user: publicUser(user),
       auth_configured: configuredAuth(),
-      media_storage_configured: r2Configured()
+      media_storage_configured: storageConfigured()
     });
   }
   if (route === '/api/login' && method === 'POST') {
@@ -606,7 +606,7 @@ server.listen(PORT, () => {
   const missing = [];
   if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
   if (!configuredAuth()) missing.push('ADMIN_EMAIL/ADMIN_PASSWORD');
-  if (!r2Configured()) missing.push('R2_*');
+  if (!storageConfigured()) missing.push('S3_* media storage');
   console.log(`Media uploader listening on http://localhost:${PORT}`);
   if (missing.length) console.warn(`Configuration missing: ${missing.join(', ')}. Existing server routes still boot; affected APIs return clear errors.`);
 });
