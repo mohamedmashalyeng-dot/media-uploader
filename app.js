@@ -2,7 +2,6 @@
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
-const storedUploadConcurrency = Number(localStorage.getItem('uploadConcurrency') || 2);
 const state = {
   user: null,
   authConfigured: true,
@@ -14,7 +13,6 @@ const state = {
   loading: false,
   view: 'library',
   filters: { search: '', type: 'all', folder: '' },
-  uploadConcurrency: Number.isFinite(storedUploadConcurrency) ? Math.max(1, Math.min(storedUploadConcurrency, 4)) : 2,
   uploads: []
 };
 
@@ -175,9 +173,6 @@ function libraryView() {
       <header class="heading">
         <div><h1>${title}</h1><p>${description}</p></div>
         ${trashView ? '' : `<div class="actions">
-          <label class="upload-setting">Uploads<select id="upload-concurrency">
-            ${[1, 2, 3, 4].map(count => `<option value="${count}" ${state.uploadConcurrency === count ? 'selected' : ''}>${count} at once</option>`).join('')}
-          </select></label>
           <button class="button soft" data-act="new-folder">New folder</button>
           <button class="button primary" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>${icon('upload')}${uploadLabel}</button>
           <input id="file-input" type="file" ${accepts} multiple hidden>
@@ -375,42 +370,31 @@ async function uploadFiles(files) {
     toast('Configure media storage before uploading.');
     return;
   }
-  if (state.uploads.some(upload => upload.state === 'Uploading')) {
-    toast('Upload already in progress');
-    return;
-  }
-  state.uploads = selected.map(file => ({ name: file.name, progress: 0, state: 'Waiting' }));
+  const batchUploads = selected.map(file => ({ name: file.name, progress: 0, state: 'Waiting' }));
+  state.uploads = [...batchUploads, ...state.uploads];
   render();
   let successCount = 0;
   let failureCount = 0;
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(state.uploadConcurrency, selected.length));
-  async function uploadNext() {
-    while (nextIndex < selected.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const file = selected[index];
-      const upload = state.uploads[index];
-      upload.state = 'Uploading';
+  await Promise.all(selected.map(async (file, index) => {
+    const upload = batchUploads[index];
+    upload.state = 'Uploading';
+    updateUploadList();
+    try {
+      const usePresigned = !isLocalStorage() && (clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024);
+      const item = usePresigned ? await uploadViaPresigned(file, upload) : await uploadViaBackend(file, upload);
+      upload.progress = 100;
+      upload.state = 'Uploaded';
+      if (item) state.items.unshift(item);
+      successCount += 1;
       updateUploadList();
-      try {
-        const usePresigned = !isLocalStorage() && (clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024);
-        const item = usePresigned ? await uploadViaPresigned(file, upload) : await uploadViaBackend(file, upload);
-        upload.progress = 100;
-        upload.state = 'Uploaded';
-        if (item) state.items.unshift(item);
-        successCount += 1;
-        updateUploadList();
-      } catch (error) {
-        upload.failed = true;
-        upload.progress = 0;
-        upload.state = `Failed: ${error.message}`;
-        failureCount += 1;
-        updateUploadList();
-      }
+    } catch (error) {
+      upload.failed = true;
+      upload.progress = 0;
+      upload.state = `Failed: ${error.message}`;
+      failureCount += 1;
+      updateUploadList();
     }
-  }
-  await Promise.all(Array.from({ length: workerCount }, uploadNext));
+  }));
   render();
   if (successCount && failureCount) toast(`${successCount} uploaded, ${failureCount} failed.`);
   else if (successCount) toast(`${successCount} file${successCount === 1 ? '' : 's'} uploaded.`);
@@ -576,14 +560,13 @@ document.addEventListener('click', async event => {
 });
 
 document.addEventListener('change', event => {
-  if (event.target.id === 'file-input') uploadFiles(event.target.files);
+  if (event.target.id === 'file-input') {
+    uploadFiles(event.target.files);
+    event.target.value = '';
+  }
   if (event.target.id === 'type-filter') {
     state.filters.type = event.target.value;
     loadMedia(true);
-  }
-  if (event.target.id === 'upload-concurrency') {
-    state.uploadConcurrency = Math.max(1, Math.min(Number(event.target.value || 2), 4));
-    localStorage.setItem('uploadConcurrency', String(state.uploadConcurrency));
   }
 });
 
