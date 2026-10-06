@@ -13,6 +13,7 @@ const state = {
   loading: false,
   view: 'library',
   filters: { search: '', type: 'all', folder: '' },
+  trashSelection: new Set(),
   uploads: []
 };
 
@@ -22,6 +23,7 @@ function icon(name) {
     search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><rect x="2" y="2" width="13" height="13" rx="2"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 16h10l1-16"/>',
+    download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
     restore: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
     image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
@@ -119,10 +121,12 @@ function mediaCard(item) {
   const trashActions = `<button class="icon-button" data-act="restore" data-id="${esc(item.id)}" title="Restore">${icon('restore')}</button>
       <button class="icon-button danger" data-act="delete-forever" data-id="${esc(item.id)}" title="Delete forever">${icon('trash')}</button>`;
   const libraryActions = `<button class="icon-button" data-act="copy-url" data-id="${esc(item.id)}" title="Copy URL">${icon('copy')}</button>
+      ${['image', 'video'].includes(item.media_type) ? `<button class="icon-button" data-act="download" data-id="${esc(item.id)}" title="Download">${icon('download')}</button>` : ''}
       ${embedCode(item) ? `<button class="icon-button" data-act="copy-embed" data-id="${esc(item.id)}" title="Copy embed">${icon('link')}</button>` : ''}
       <button class="icon-button" data-act="details" data-id="${esc(item.id)}" title="Details">${icon('edit')}</button>
       <button class="icon-button danger" data-act="delete" data-id="${esc(item.id)}" title="Move to trash">${icon('trash')}</button>`;
   return `<article class="media-card" data-id="${esc(item.id)}">
+    ${state.view === 'trash' ? `<label class="media-select" title="Select media"><input type="checkbox" class="trash-select" data-id="${esc(item.id)}" ${state.trashSelection.has(item.id) ? 'checked' : ''}><span></span></label>` : ''}
     <button class="media-preview" data-act="details" data-id="${esc(item.id)}">${preview}</button>
     <div class="media-copy">
       <strong>${esc(item.title || item.file_name)}</strong>
@@ -162,6 +166,8 @@ function libraryView() {
   const trashView = state.view === 'trash';
   const title = trashView ? 'Trash' : 'Media Library';
   const description = trashView ? 'Restore deleted media or remove it permanently.' : intro;
+  const selectedCount = state.trashSelection.size;
+  const allVisibleSelected = trashView && state.items.length > 0 && state.items.every(item => state.trashSelection.has(item.id));
   return `<div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span>ML</span><b>Media Library</b></div>
@@ -180,6 +186,12 @@ function libraryView() {
       </header>
       ${state.storageConfigured || trashView ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
       ${trashView ? '<div class="notice">Items in Trash are hidden from the main library until you restore them.</div>' : ''}
+      ${trashView && state.items.length ? `<section class="bulk-bar">
+        <label><input type="checkbox" id="select-all-trash" ${allVisibleSelected ? 'checked' : ''}> Select all visible</label>
+        <span>${selectedCount} selected</span>
+        <button class="button" data-act="restore-selected" ${selectedCount ? '' : 'disabled'}>${icon('restore')}Restore selected</button>
+        <button class="button danger" data-act="delete-selected-forever" ${selectedCount ? '' : 'disabled'}>${icon('trash')}Delete selected</button>
+      </section>` : ''}
       ${trashView ? '' : `
       <section class="drop-zone ${state.storageConfigured ? '' : 'disabled'}" id="drop-zone">
         <div>${icon('upload')}<strong>${dropTitle}</strong><span>${dropHint}</span></div>
@@ -283,6 +295,7 @@ async function loadMedia(reset = false) {
     const result = await api(mediaQuery(reset), { method: 'GET' });
     state.items = reset ? result.items || [] : [...state.items, ...(result.items || [])];
     state.nextCursor = result.next_cursor || null;
+    if (reset) state.trashSelection.clear();
     render();
   } catch (error) {
     toast(error.message);
@@ -480,12 +493,32 @@ async function deleteMedia(id) {
   toast('Media moved to Trash');
 }
 
+function downloadMedia(item) {
+  const link = document.createElement('a');
+  link.href = item.public_url;
+  link.download = item.original_file_name || item.file_name || 'media';
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 async function restoreMedia(id) {
   await api(`/api/media/${encodeURIComponent(id)}/restore`, { method: 'POST', body: {} });
   state.items = state.items.filter(item => item.id !== id);
   $('#details')?.close();
   render();
   toast('Media restored');
+}
+
+async function restoreSelectedMedia() {
+  const ids = [...state.trashSelection].filter(id => state.items.some(item => item.id === id));
+  if (!ids.length) return;
+  await Promise.all(ids.map(id => api(`/api/media/${encodeURIComponent(id)}/restore`, { method: 'POST', body: {} })));
+  state.items = state.items.filter(item => !ids.includes(item.id));
+  ids.forEach(id => state.trashSelection.delete(id));
+  render();
+  toast(`${ids.length} item${ids.length === 1 ? '' : 's'} restored`);
 }
 
 async function deleteForever(id) {
@@ -501,6 +534,23 @@ async function deleteForever(id) {
   $('#details')?.close();
   render();
   toast('Media permanently deleted');
+}
+
+async function deleteSelectedForever() {
+  const ids = [...state.trashSelection].filter(id => state.items.some(item => item.id === id));
+  if (!ids.length) return;
+  const confirmed = await confirmAction({
+    title: 'Delete selected forever',
+    message: `${ids.length} selected item${ids.length === 1 ? '' : 's'} will be permanently deleted and cannot be undone.`,
+    confirmLabel: 'Delete selected',
+    danger: true
+  });
+  if (!confirmed) return;
+  await Promise.all(ids.map(id => api(`/api/media/${encodeURIComponent(id)}?permanent=true`, { method: 'DELETE' })));
+  state.items = state.items.filter(item => !ids.includes(item.id));
+  ids.forEach(id => state.trashSelection.delete(id));
+  render();
+  toast(`${ids.length} item${ids.length === 1 ? '' : 's'} permanently deleted`);
 }
 
 document.addEventListener('click', async event => {
@@ -527,6 +577,7 @@ document.addEventListener('click', async event => {
         state.view = nextView;
         state.nextCursor = null;
         state.items = [];
+        state.trashSelection.clear();
         render();
         await loadMedia(true);
       }
@@ -543,10 +594,16 @@ document.addEventListener('click', async event => {
       const item = state.items.find(row => row.id === id);
       if (item) await copyText(embedCode(item), 'Embed copied');
     }
+    if (act === 'download') {
+      const item = state.items.find(row => row.id === id);
+      if (item) downloadMedia(item);
+    }
     if (act === 'details') await showDetails(id);
     if (act === 'delete') await deleteMedia(id);
     if (act === 'restore') await restoreMedia(id);
     if (act === 'delete-forever') await deleteForever(id);
+    if (act === 'restore-selected') await restoreSelectedMedia();
+    if (act === 'delete-selected-forever') await deleteSelectedForever();
     if (act === 'dialog-copy-url') await copyText($('#details').dataset.url, 'URL copied');
     if (act === 'dialog-copy-embed') await copyText($('#details').dataset.embed, 'Embed copied');
     if (act === 'dialog-delete') await deleteMedia($('#details').dataset.id);
@@ -567,6 +624,17 @@ document.addEventListener('change', event => {
   if (event.target.id === 'type-filter') {
     state.filters.type = event.target.value;
     loadMedia(true);
+  }
+  if (event.target.classList.contains('trash-select')) {
+    const id = event.target.dataset.id;
+    if (event.target.checked) state.trashSelection.add(id);
+    else state.trashSelection.delete(id);
+    render();
+  }
+  if (event.target.id === 'select-all-trash') {
+    if (event.target.checked) state.items.forEach(item => state.trashSelection.add(item.id));
+    else state.items.forEach(item => state.trashSelection.delete(item.id));
+    render();
   }
 });
 

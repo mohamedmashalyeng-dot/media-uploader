@@ -1,5 +1,5 @@
-const CACHE = 'media-library-shell-v20261006-open-uploads';
-const SHELL = ['/offline.html', '/styles.css?v=20261006-open-uploads', '/app.js?v=20261006-open-uploads'];
+const CACHE = 'media-library-shell-v20261006-trash-bulk-download';
+const SHELL = ['/offline.html', '/styles.css?v=20261006-trash-bulk-download', '/app.js?v=20261006-trash-bulk-download'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
