@@ -205,6 +205,40 @@ function showFolderDialog() {
   requestAnimationFrame(() => dialog.querySelector('input')?.focus());
 }
 
+function confirmAction({ title = 'Are you sure?', message = '', confirmLabel = 'Confirm', danger = false } = {}) {
+  const dialog = $('#confirm-dialog');
+  return new Promise(resolve => {
+    dialog.innerHTML = `<form id="confirm-form" method="dialog" class="small-dialog">
+      <header class="dialog-head"><h2>${esc(title)}</h2><button type="button" class="icon-button" data-confirm="cancel" title="Close">${icon('close')}</button></header>
+      <div class="dialog-body">
+        ${message ? `<p class="confirm-message">${esc(message)}</p>` : ''}
+        <div class="dialog-actions">
+          <button type="button" class="button" data-confirm="cancel">Cancel</button>
+          <button type="button" class="button ${danger ? 'danger' : 'primary'}" data-confirm="ok">${danger ? icon('trash') : ''}${esc(confirmLabel)}</button>
+        </div>
+      </div>
+    </form>`;
+    const cleanup = value => {
+      dialog.removeEventListener('click', onClick);
+      dialog.removeEventListener('cancel', onCancel);
+      dialog.close();
+      resolve(value);
+    };
+    const onClick = event => {
+      const action = event.target.closest('[data-confirm]')?.dataset.confirm;
+      if (!action) return;
+      cleanup(action === 'ok');
+    };
+    const onCancel = event => {
+      event.preventDefault();
+      cleanup(false);
+    };
+    dialog.addEventListener('click', onClick);
+    dialog.addEventListener('cancel', onCancel);
+    dialog.showModal();
+  });
+}
+
 async function bootstrap() {
   const result = await api('/api/bootstrap');
   state.user = result.user;
@@ -410,7 +444,13 @@ async function saveDetails(form) {
 }
 
 async function deleteMedia(id) {
-  if (!confirm('Delete this media item?')) return;
+  const confirmed = await confirmAction({
+    title: 'Delete media',
+    message: 'This media item will be permanently deleted.',
+    confirmLabel: 'Delete',
+    danger: true
+  });
+  if (!confirmed) return;
   await api(`/api/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
   state.items = state.items.filter(item => item.id !== id);
   $('#details')?.close();
