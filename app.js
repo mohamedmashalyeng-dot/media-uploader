@@ -414,7 +414,7 @@ async function showDetails(id) {
   const preview = item.media_type === 'image'
     ? `<img src="${esc(item.public_url)}" alt="${esc(item.alt_text || item.title || item.file_name)}">`
     : item.media_type === 'video'
-      ? `<video src="${esc(item.public_url)}" controls preload="metadata"></video>`
+      ? `<video controls preload="metadata" playsinline><source src="${esc(item.public_url)}" type="${esc(item.mime_type || 'video/mp4')}"></video>`
       : `<div class="file-preview large">${mediaIcon(item.media_type)}</div>`;
   const dialog = $('#details');
   dialog.innerHTML = `<form id="details-form" method="dialog">
@@ -452,6 +452,11 @@ async function showDetails(id) {
   dialog.dataset.url = item.public_url;
   dialog.dataset.embed = embed;
   dialog.showModal();
+  const video = dialog.querySelector('video');
+  if (video) {
+    video.muted = false;
+    video.volume = 1;
+  }
 }
 
 async function saveDetails(form) {
