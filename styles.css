@@ -45,11 +45,16 @@ p{line-height:1.5;color:var(--muted)}
 .notice.danger{border-color:#eaccc5;background:#fff7f4;color:var(--red)}
 .drop-zone{display:flex;justify-content:space-between;align-items:center;gap:16px;border:1px dashed #9caf9f;background:#fbfcfa;border-radius:8px;padding:24px;margin-bottom:18px}
 .drop-zone.dragging{border-color:var(--green);background:var(--green-soft)}
+.drop-zone.disabled{opacity:.68;background:#f4f4f1;border-style:solid}
 .drop-zone>div{display:flex;align-items:center;gap:12px;min-width:0}
 .drop-zone strong{display:block}
 .drop-zone span{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .upload-list{display:grid;gap:8px;margin-bottom:18px}
 .upload-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(180px,2fr) 54px;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}
+.upload-row.failed{border-color:#efd1ca;background:#fff8f6}
+.upload-row.failed span,.upload-row.failed b{color:var(--red)}
+.upload-row.failed .progress span{background:var(--red)}
+.upload-row.success{border-color:#c8ddcd;background:#fbfefb}
 .upload-row strong{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upload-row span{display:block;color:var(--muted);font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upload-row b{text-align:right;font-size:12px}

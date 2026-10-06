@@ -94,7 +94,7 @@ async function copyText(text, label = 'Copied') {
 }
 
 function uploadRow(upload) {
-  return `<div class="upload-row">
+  return `<div class="upload-row ${upload.failed ? 'failed' : upload.state === 'Uploaded' ? 'success' : ''}">
     <div><strong>${esc(upload.name)}</strong><span>${esc(upload.state)}</span></div>
     <div class="progress"><span style="width:${Math.max(0, Math.min(upload.progress, 100))}%"></span></div>
     <b>${Math.round(upload.progress)}%</b>
@@ -150,14 +150,14 @@ function libraryView() {
         <div><h1>Media Library</h1><p>Private asset manager for website files.</p></div>
         <div class="actions">
           <button class="button soft" data-act="new-folder">New folder</button>
-          <button class="button primary" data-act="browse">${icon('upload')}Upload files</button>
+          <button class="button primary" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>${icon('upload')}Upload files</button>
           <input id="file-input" type="file" multiple hidden>
         </div>
       </header>
       ${state.storageConfigured ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
-      <section class="drop-zone" id="drop-zone">
+      <section class="drop-zone ${state.storageConfigured ? '' : 'disabled'}" id="drop-zone">
         <div>${icon('upload')}<strong>Drag files here</strong><span>or choose files from your device</span></div>
-        <button class="button" data-act="browse">Browse Files</button>
+        <button class="button" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>Browse Files</button>
       </section>
       ${uploading}
       <section class="toolbar">
@@ -283,12 +283,18 @@ function updateUploadList() {
 async function uploadFiles(files) {
   const selected = [...files];
   if (!selected.length) return;
+  if (!state.storageConfigured) {
+    toast('Configure media storage before uploading.');
+    return;
+  }
   if (state.uploads.some(upload => upload.state === 'Uploading')) {
     toast('Upload already in progress');
     return;
   }
   state.uploads = selected.map(file => ({ name: file.name, progress: 0, state: 'Waiting' }));
   render();
+  let successCount = 0;
+  let failureCount = 0;
   for (let index = 0; index < selected.length; index += 1) {
     const file = selected[index];
     const upload = state.uploads[index];
@@ -300,14 +306,20 @@ async function uploadFiles(files) {
       upload.progress = 100;
       upload.state = 'Uploaded';
       if (item) state.items.unshift(item);
+      successCount += 1;
       updateUploadList();
     } catch (error) {
-      upload.state = error.message;
+      upload.failed = true;
+      upload.progress = 0;
+      upload.state = `Failed: ${error.message}`;
+      failureCount += 1;
       updateUploadList();
     }
   }
   render();
-  toast('Upload finished');
+  if (successCount && failureCount) toast(`${successCount} uploaded, ${failureCount} failed.`);
+  else if (successCount) toast(`${successCount} file${successCount === 1 ? '' : 's'} uploaded.`);
+  else toast('Upload failed.');
 }
 
 async function showDetails(id) {
@@ -381,7 +393,13 @@ document.addEventListener('click', async event => {
   const act = target.dataset.act;
   const id = target.dataset.id;
   try {
-    if (act === 'browse') $('#file-input').click();
+    if (act === 'browse') {
+      if (!state.storageConfigured) {
+        toast('Configure media storage before uploading.');
+        return;
+      }
+      $('#file-input').click();
+    }
     if (act === 'logout') {
       await api('/api/logout', { method: 'POST', body: {} });
       state.user = null;
@@ -466,6 +484,10 @@ document.addEventListener('drop', event => {
   if (!event.target.closest('#drop-zone')) return;
   event.preventDefault();
   $('#drop-zone').classList.remove('dragging');
+  if (!state.storageConfigured) {
+    toast('Configure media storage before uploading.');
+    return;
+  }
   uploadFiles(event.dataTransfer.files);
 });
 
