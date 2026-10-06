@@ -259,6 +259,16 @@ function encodeCursor(row) {
   return base64urlJson({ created_at: row.sort_at || row.created_at, id: row.id });
 }
 
+function localStoragePath(objectKey) {
+  const config = storageConfig();
+  const root = path.resolve(process.cwd(), config.localMediaDir);
+  const filePath = path.resolve(root, String(objectKey || '').replace(/^[/\\]+/, ''));
+  if (filePath === root || !filePath.startsWith(`${root}${path.sep}`)) {
+    throw statusError(400, 'Invalid local media path.', 'INVALID_MEDIA_PATH');
+  }
+  return filePath;
+}
+
 async function listMedia(url) {
   const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') || 50), 100));
   const where = [];
@@ -380,6 +390,7 @@ async function permanentlyDeleteMedia(id) {
 }
 
 function parseMultipartUpload(req, user) {
+  if (storageConfig().driver === 'local') return parseLocalMultipartUpload(req, user);
   return new Promise((resolve, reject) => {
     const contentType = String(req.headers['content-type'] || '');
     if (!contentType.includes('multipart/form-data')) return reject(statusError(400, 'Use multipart/form-data.', 'INVALID_MULTIPART'));
@@ -448,6 +459,124 @@ function parseMultipartUpload(req, user) {
             items.push(item);
           } catch (error) {
             await deleteObject(key.objectKey).catch(cleanupError => console.error(`[r2] orphan cleanup failed ${key.objectKey}: ${cleanupError.message || cleanupError}`));
+            throw error;
+          }
+        }
+        resolve({ ok: true, items });
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.pipe(busboy);
+  });
+}
+
+function parseLocalMultipartUpload(req, user) {
+  return new Promise((resolve, reject) => {
+    const contentType = String(req.headers['content-type'] || '');
+    if (!contentType.includes('multipart/form-data')) return reject(statusError(400, 'Use multipart/form-data.', 'INVALID_MULTIPART'));
+    const limits = mediaLimits();
+    const maxLocalUpload = Math.max(limits.image, limits.video);
+    const busboy = Busboy({ headers: req.headers, limits: { files: 20, fileSize: maxLocalUpload } });
+    const fields = {};
+    const fileTasks = [];
+    let failed = null;
+
+    busboy.on('field', (name, value) => { fields[name] = value; });
+    busboy.on('file', (name, file, info) => {
+      const task = new Promise(done => {
+        const filename = info.filename || 'asset';
+        const mimeType = cleanMime(info.mimeType || 'application/octet-stream');
+        let size = 0;
+        let rejected = null;
+        let key = null;
+        let tempPath = '';
+        let finalPath = '';
+        let writer = null;
+        let settled = false;
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          done({ filename, mimeType, size, key, tempPath, finalPath, error: rejected });
+        };
+
+        try {
+          const validation = validateUpload({ filename, mimeType, size: 0 });
+          key = createObjectKey({ filename, mimeType });
+          if (!['image', 'video'].includes(key.mediaType)) {
+            rejected = statusError(400, 'Local storage mode currently supports image and video uploads only.', 'LOCAL_MEDIA_TYPES_ONLY');
+          }
+          finalPath = key ? localStoragePath(key.objectKey) : '';
+          tempPath = finalPath ? `${finalPath}.upload-${crypto.randomBytes(4).toString('hex')}.tmp` : '';
+          if (!rejected) {
+            fs.mkdirSync(path.dirname(tempPath), { recursive: true });
+            writer = fs.createWriteStream(tempPath);
+            writer.on('error', error => {
+              rejected = error;
+              file.resume();
+            });
+          }
+          file.on('data', chunk => {
+            size += chunk.length;
+            if (!rejected && size > validation.maxBytes) rejected = statusError(413, `${validation.mediaType[0].toUpperCase()}${validation.mediaType.slice(1)} exceeds the maximum allowed size.`, 'FILE_TOO_LARGE');
+            if (rejected || !writer) return;
+            if (!writer.write(chunk)) file.pause();
+          });
+          if (writer) writer.on('drain', () => file.resume());
+        } catch (error) {
+          rejected = error;
+          file.resume();
+        }
+
+        file.on('limit', () => {
+          rejected = statusError(413, 'File exceeds the maximum allowed size.', 'FILE_TOO_LARGE');
+        });
+        file.on('error', error => {
+          rejected = error;
+          finish();
+        });
+        file.on('end', () => {
+          if (!writer || writer.destroyed) return finish();
+          writer.end(finish);
+        });
+      });
+      fileTasks.push(task);
+    });
+    busboy.on('error', error => { failed = error; });
+    busboy.on('finish', async () => {
+      if (failed) return reject(failed);
+      const files = await Promise.all(fileTasks);
+      if (!files.length) return reject(statusError(400, 'Choose at least one file.', 'NO_FILES'));
+      const items = [];
+      try {
+        for (const file of files) {
+          if (file.error) {
+            if (file.tempPath) await fs.promises.unlink(file.tempPath).catch(() => null);
+            throw file.error;
+          }
+          validateUpload({ filename: file.filename, mimeType: file.mimeType, size: file.size });
+          await fs.promises.rename(file.tempPath, file.finalPath);
+          try {
+            const item = await insertMediaRecord({
+              file_name: file.key.fileName,
+              original_file_name: file.filename,
+              object_key: file.key.objectKey,
+              public_url: createPublicUrl(file.key.objectKey),
+              media_type: file.key.mediaType,
+              mime_type: file.mimeType,
+              extension: file.key.extension,
+              size_bytes: file.size,
+              title: fields.title || path.parse(file.filename).name,
+              alt_text: fields.alt_text || '',
+              caption: fields.caption || '',
+              description: fields.description || '',
+              folder: safeFolder(fields.folder),
+              uploaded_by: user.email
+            });
+            items.push(item);
+          } catch (error) {
+            await deleteObject(file.key.objectKey).catch(cleanupError => console.error(`[local] orphan cleanup failed ${file.key.objectKey}: ${cleanupError.message || cleanupError}`));
             throw error;
           }
         }
