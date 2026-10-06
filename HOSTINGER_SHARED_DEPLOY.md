@@ -71,7 +71,7 @@ S3_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
 S3_FORCE_PATH_STYLE=false
 ```
 
-For phase 1 images only, use local storage:
+For local images and videos, use local storage:
 
 ```env
 STORAGE_DRIVER=local
@@ -79,18 +79,18 @@ LOCAL_MEDIA_DIR=uploads
 LOCAL_MEDIA_PUBLIC_BASE_URL=/media
 ```
 
-This stores uploaded images in the app's `uploads/` folder and serves them from `/media/...`.
+This stores uploaded images and videos in the app's `uploads/` folder and serves them from `/media/...`.
 
 Shared hosting friendly media limits:
 
 ```env
-MEDIA_BACKEND_UPLOAD_MAX_MB=20
+MEDIA_BACKEND_UPLOAD_MAX_MB=100
 MEDIA_MAX_IMAGE_MB=15
-MEDIA_MAX_VIDEO_MB=500
+MEDIA_MAX_VIDEO_MB=100
 MEDIA_MAX_DOCUMENT_MB=50
 ```
 
-In local image mode, only images are accepted. Later, if you enable S3-compatible storage, the app sends videos and files larger than 15 MB directly from the browser to object storage using presigned URLs, so Hostinger does not need to buffer large files.
+In local media mode, images and videos are accepted. Later, if you enable S3-compatible storage, the app sends videos and files larger than 15 MB directly from the browser to object storage using presigned URLs, so Hostinger does not need to buffer large files.
 
 ## Database Migration
 

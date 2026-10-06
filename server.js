@@ -396,8 +396,8 @@ function parseMultipartUpload(req, user) {
         for (const file of files) {
           if (file.error) throw file.error;
           const key = createObjectKey({ filename: file.filename, mimeType: file.mimeType });
-          if (storageConfig().driver === 'local' && key.mediaType !== 'image') {
-            throw statusError(400, 'Local storage mode currently supports image uploads only.', 'LOCAL_IMAGES_ONLY');
+          if (storageConfig().driver === 'local' && !['image', 'video'].includes(key.mediaType)) {
+            throw statusError(400, 'Local storage mode currently supports image and video uploads only.', 'LOCAL_MEDIA_TYPES_ONLY');
           }
           const publicUrl = await uploadObject({ key: key.objectKey, body: file.buffer, contentType: file.mimeType });
           try {
@@ -507,7 +507,8 @@ async function handleApi(req, res) {
       auth_configured: configuredAuth(),
       media_storage_configured: storageConfigured(),
       storage_driver: storageConfig().driver,
-      image_upload_only: storageConfig().driver === 'local'
+      local_upload_types: storageConfig().driver === 'local' ? ['image', 'video'] : null,
+      image_upload_only: false
     });
   }
   if (route === '/api/login' && method === 'POST') {
@@ -570,6 +571,10 @@ const mime = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.qt': 'video/quicktime',
   '.ico': 'image/x-icon'
 };
 

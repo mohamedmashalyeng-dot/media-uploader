@@ -6,7 +6,7 @@ const state = {
   user: null,
   authConfigured: true,
   storageConfigured: true,
-  imageUploadOnly: false,
+  localUploadTypes: null,
   items: [],
   nextCursor: null,
   loading: false,
@@ -140,6 +140,14 @@ function loginView() {
 
 function libraryView() {
   const uploading = state.uploads.length ? `<section class="upload-list">${state.uploads.map(uploadRow).join('')}</section>` : '';
+  const localTypes = state.localUploadTypes || null;
+  const localMediaOnly = Array.isArray(localTypes);
+  const accepts = localMediaOnly ? 'accept="image/*,video/mp4,video/webm,video/quicktime"' : '';
+  const uploadLabel = localMediaOnly ? 'Upload media' : 'Upload files';
+  const intro = localMediaOnly ? 'Image and video manager for website assets.' : 'Private asset manager for website files.';
+  const dropTitle = localMediaOnly ? 'Drag images or videos here' : 'Drag files here';
+  const dropHint = localMediaOnly ? 'PNG, JPG, WebP, GIF, SVG, MP4, WebM or MOV' : 'or choose files from your device';
+  const typeOptions = localMediaOnly ? ['all', 'image', 'video'] : ['all', 'image', 'video', 'document', 'other'];
   return `<div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span>ML</span><b>Media Library</b></div>
@@ -148,28 +156,28 @@ function libraryView() {
     </aside>
     <main class="workspace">
       <header class="heading">
-        <div><h1>Media Library</h1><p>${state.imageUploadOnly ? 'Image manager for website assets.' : 'Private asset manager for website files.'}</p></div>
+        <div><h1>Media Library</h1><p>${intro}</p></div>
         <div class="actions">
           <button class="button soft" data-act="new-folder">New folder</button>
-          <button class="button primary" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>${icon('upload')}${state.imageUploadOnly ? 'Upload images' : 'Upload files'}</button>
-          <input id="file-input" type="file" ${state.imageUploadOnly ? 'accept="image/*"' : ''} multiple hidden>
+          <button class="button primary" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>${icon('upload')}${uploadLabel}</button>
+          <input id="file-input" type="file" ${accepts} multiple hidden>
         </div>
       </header>
       ${state.storageConfigured ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
       <section class="drop-zone ${state.storageConfigured ? '' : 'disabled'}" id="drop-zone">
-        <div>${icon('upload')}<strong>${state.imageUploadOnly ? 'Drag images here' : 'Drag files here'}</strong><span>${state.imageUploadOnly ? 'PNG, JPG, WebP, GIF or SVG' : 'or choose files from your device'}</span></div>
-        <button class="button" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>${state.imageUploadOnly ? 'Browse Images' : 'Browse Files'}</button>
+        <div>${icon('upload')}<strong>${dropTitle}</strong><span>${dropHint}</span></div>
+        <button class="button" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>Browse Media</button>
       </section>
       ${uploading}
       <section class="toolbar">
         <label class="search">${icon('search')}<input id="search" placeholder="Search media..." value="${esc(state.filters.search)}"></label>
         <select id="type-filter">
-          ${(state.imageUploadOnly ? ['all', 'image'] : ['all', 'image', 'video', 'document', 'other']).map(type => `<option value="${type}" ${state.filters.type === type ? 'selected' : ''}>${type === 'all' ? 'All' : `${type[0].toUpperCase()}${type.slice(1)}s`}</option>`).join('')}
+          ${typeOptions.map(type => `<option value="${type}" ${state.filters.type === type ? 'selected' : ''}>${type === 'all' ? 'All' : `${type[0].toUpperCase()}${type.slice(1)}s`}</option>`).join('')}
         </select>
         <input id="folder-filter" placeholder="Folder" value="${esc(state.filters.folder)}">
       </section>
       <section class="media-grid" id="media-grid">
-        ${state.items.length ? state.items.map(mediaCard).join('') : `<div class="empty">${icon('image')}<h2>No media yet</h2><p>${state.imageUploadOnly ? 'Upload your first image.' : 'Upload your first image, video or document.'}</p></div>`}
+        ${state.items.length ? state.items.map(mediaCard).join('') : `<div class="empty">${icon('image')}<h2>No media yet</h2><p>${localMediaOnly ? 'Upload your first image or video.' : 'Upload your first image, video or document.'}</p></div>`}
       </section>
       ${state.nextCursor ? `<div class="load-more"><button class="button soft" data-act="load-more">Load more</button></div>` : ''}
     </main>
@@ -185,7 +193,7 @@ async function bootstrap() {
   state.user = result.user;
   state.authConfigured = result.auth_configured !== false;
   state.storageConfigured = result.media_storage_configured !== false;
-  state.imageUploadOnly = result.image_upload_only === true;
+  state.localUploadTypes = Array.isArray(result.local_upload_types) ? result.local_upload_types : null;
   render();
   if (state.user) await loadMedia(true);
 }
@@ -285,8 +293,8 @@ function updateUploadList() {
 async function uploadFiles(files) {
   const selected = [...files];
   if (!selected.length) return;
-  if (state.imageUploadOnly && selected.some(file => !clientMediaType(file).startsWith('image'))) {
-    toast('This phase supports images only.');
+  if (state.localUploadTypes && selected.some(file => !state.localUploadTypes.includes(clientMediaType(file)))) {
+    toast('Local mode supports images and videos only.');
     return;
   }
   if (!state.storageConfigured) {
@@ -307,7 +315,7 @@ async function uploadFiles(files) {
     upload.state = 'Uploading';
     updateUploadList();
     try {
-      const usePresigned = clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024;
+      const usePresigned = !state.localUploadTypes && (clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024);
       const item = usePresigned ? await uploadViaPresigned(file, upload) : await uploadViaBackend(file, upload);
       upload.progress = 100;
       upload.state = 'Uploaded';
