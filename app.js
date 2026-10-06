@@ -25,6 +25,7 @@ function icon(name) {
     video: '<rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10 4-2v8l-4-2"/>',
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    folder: '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/>',
     link: '<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>'
   };
   return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.file}</svg>`;
@@ -186,6 +187,22 @@ function libraryView() {
 
 function render() {
   $('#app').innerHTML = state.user ? libraryView() : loginView();
+}
+
+function showFolderDialog() {
+  const dialog = $('#folder-dialog');
+  dialog.innerHTML = `<form id="folder-form" method="dialog" class="small-dialog">
+    <header class="dialog-head"><h2>New folder</h2><button type="button" class="icon-button" data-act="close-folder-dialog" title="Close">${icon('close')}</button></header>
+    <div class="dialog-body">
+      <label>Folder name<input name="folder" value="${esc(state.filters.folder || '')}" autocomplete="off" required></label>
+      <div class="dialog-actions">
+        <button type="button" class="button" data-act="close-folder-dialog">Cancel</button>
+        <button class="button primary" value="save">${icon('folder')}Save folder</button>
+      </div>
+    </div>
+  </form>`;
+  dialog.showModal();
+  requestAnimationFrame(() => dialog.querySelector('input')?.focus());
 }
 
 async function bootstrap() {
@@ -420,11 +437,7 @@ document.addEventListener('click', async event => {
       render();
     }
     if (act === 'new-folder') {
-      const folder = prompt('Folder name', state.filters.folder || '');
-      if (folder !== null) {
-        state.filters.folder = folder.trim();
-        await loadMedia(true);
-      }
+      showFolderDialog();
     }
     if (act === 'load-more') await loadMedia(false);
     if (act === 'copy-url') {
@@ -441,6 +454,7 @@ document.addEventListener('click', async event => {
     if (act === 'dialog-copy-embed') await copyText($('#details').dataset.embed, 'Embed copied');
     if (act === 'dialog-delete') await deleteMedia($('#details').dataset.id);
     if (act === 'close-dialog') $('#details').close();
+    if (act === 'close-folder-dialog') $('#folder-dialog').close();
   } catch (error) {
     toast(error.message);
   }
@@ -478,6 +492,12 @@ document.addEventListener('submit', async event => {
       await loadMedia(true);
     }
     if (event.target.id === 'details-form') await saveDetails(event.target);
+    if (event.target.id === 'folder-form') {
+      const folder = new FormData(event.target).get('folder').trim();
+      state.filters.folder = folder;
+      $('#folder-dialog').close();
+      await loadMedia(true);
+    }
   } catch (error) {
     toast(error.message);
   }
