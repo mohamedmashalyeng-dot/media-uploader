@@ -158,15 +158,13 @@ function libraryView() {
   const title = trashView ? 'Trash' : 'Media Library';
   const description = trashView ? 'Restore deleted media or remove it permanently.' : intro;
   return `<div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span>ML</span><b>Media Library</b></div>
+      <button class="nav ${trashView ? '' : 'active'}" data-act="view-library">${icon('image')}Media Library</button>
+      <button class="nav ${trashView ? 'active' : ''}" data-act="view-trash">${icon('trash')}Trash</button>
+      <button class="nav" data-act="logout">${icon('close')}Sign out</button>
+    </aside>
     <main class="workspace">
-      <nav class="topbar">
-        <div class="brand"><span>ML</span><b>Media Library</b></div>
-        <div class="topnav">
-          <button class="nav ${trashView ? '' : 'active'}" data-act="view-library">${icon('image')}Media Library</button>
-          <button class="nav ${trashView ? 'active' : ''}" data-act="view-trash">${icon('trash')}Trash</button>
-          <button class="nav" data-act="logout">${icon('close')}Sign out</button>
-        </div>
-      </nav>
       <header class="heading">
         <div><h1>${title}</h1><p>${description}</p></div>
         ${trashView ? '' : `<div class="actions">
