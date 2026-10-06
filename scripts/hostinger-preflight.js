@@ -7,6 +7,7 @@ const requiredFiles = [
   'index.html',
   'sw.js',
   'manifest.webmanifest',
+  'BACKBLAZE_B2_SETUP.md',
   'package.json',
   'package-lock.json',
   'lib/media-utils.js',

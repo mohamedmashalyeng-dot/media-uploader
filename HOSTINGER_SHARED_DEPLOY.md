@@ -54,7 +54,7 @@ npm run hostinger:check
 
 Use `hostinger.env.example` as the checklist.
 
-Required:
+Required app/database values:
 
 ```env
 NODE_ENV=production
@@ -62,16 +62,21 @@ DATABASE_URL=
 SESSION_SECRET=
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-S3_ENDPOINT=
-S3_REGION=us-east-1
-S3_ACCESS_KEY_ID=
-S3_SECRET_ACCESS_KEY=
-S3_BUCKET_NAME=
-S3_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
-S3_FORCE_PATH_STYLE=false
 ```
 
-For local images and videos, use local storage:
+Recommended production storage for the largest number of files:
+
+```env
+STORAGE_DRIVER=b2
+B2_REGION=us-west-004
+B2_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+B2_KEY_ID=
+B2_APPLICATION_KEY=
+B2_BUCKET_NAME=
+B2_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
+```
+
+For local images and videos only, use local storage:
 
 ```env
 STORAGE_DRIVER=local
@@ -84,9 +89,9 @@ This stores uploaded images and videos in the app's `uploads/` folder and serves
 Shared hosting friendly media limits:
 
 ```env
-MEDIA_BACKEND_UPLOAD_MAX_MB=100
+MEDIA_BACKEND_UPLOAD_MAX_MB=20
 MEDIA_MAX_IMAGE_MB=15
-MEDIA_MAX_VIDEO_MB=100
+MEDIA_MAX_VIDEO_MB=5000
 MEDIA_MAX_DOCUMENT_MB=50
 ```
 
@@ -102,7 +107,7 @@ npm run migrate
 
 ## Object Storage CORS
 
-Use any S3-compatible provider, such as AWS S3, Backblaze B2, Wasabi, DigitalOcean Spaces, or Cloudflare R2.
+Use Backblaze B2 or any S3-compatible provider. Create a public bucket or connect a custom public domain, then set `B2_PUBLIC_BASE_URL` to that public URL.
 
 Add your Hostinger app domain to the bucket CORS:
 
