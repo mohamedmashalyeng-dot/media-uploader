@@ -197,6 +197,7 @@ function mediaRow(row) {
     height: row.height,
     duration_seconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
     uploaded_by: row.uploaded_by || '',
+    deleted_at: row.deleted_at,
     created_at: row.created_at,
     updated_at: row.updated_at
   };
@@ -255,7 +256,7 @@ function decodeCursor(cursor) {
 
 function encodeCursor(row) {
   if (!row) return null;
-  return base64urlJson({ created_at: row.created_at, id: row.id });
+  return base64urlJson({ created_at: row.sort_at || row.created_at, id: row.id });
 }
 
 async function listMedia(url) {
@@ -266,6 +267,9 @@ async function listMedia(url) {
   const folder = String(url.searchParams.get('folder') || '').trim();
   const search = String(url.searchParams.get('search') || '').trim();
   const cursor = decodeCursor(url.searchParams.get('cursor') || '');
+  const trash = url.searchParams.get('trash') === 'true';
+
+  where.push(trash ? 'deleted_at is not null' : 'deleted_at is null');
 
   if (type && type !== 'all') {
     if (!['image', 'video', 'document', 'other'].includes(type)) throw statusError(400, 'Unsupported media type.', 'INVALID_MEDIA_TYPE');
@@ -282,17 +286,17 @@ async function listMedia(url) {
   }
   if (cursor) {
     params.push(cursor.created_at, cursor.id);
-    where.push(`(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`);
+    where.push(`(${trash ? 'deleted_at' : 'created_at'}, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`);
   }
   const whereSql = where.length ? `where ${where.join(' and ')}` : '';
   params.push(limit + 1);
   const result = await getPool().query(
     `select id, file_name, original_file_name, public_url, media_type, mime_type, extension,
             size_bytes, title, alt_text, caption, folder, width, height, duration_seconds,
-            uploaded_by, created_at, updated_at
+            uploaded_by, deleted_at, created_at, updated_at, ${trash ? 'deleted_at' : 'created_at'} as sort_at
      from app_media
      ${whereSql}
-     order by created_at desc, id desc
+     order by ${trash ? 'deleted_at' : 'created_at'} desc, id desc
      limit $${params.length}`,
     params
   );
@@ -333,6 +337,30 @@ async function updateMedia(id, body) {
 }
 
 async function deleteMedia(id) {
+  const result = await getPool().query(
+    `update app_media
+     set deleted_at = coalesce(deleted_at, now()), updated_at = now()
+     where id = $1::uuid and deleted_at is null
+     returning id, object_key, deleted_at`,
+    [id]
+  );
+  if (!result.rows[0]) throw statusError(404, 'Media item not found.', 'MEDIA_NOT_FOUND');
+  return { ok: true, deleted: { id, object_key: result.rows[0].object_key, deleted_at: result.rows[0].deleted_at } };
+}
+
+async function restoreMedia(id) {
+  const result = await getPool().query(
+    `update app_media
+     set deleted_at = null, updated_at = now()
+     where id = $1::uuid and deleted_at is not null
+     returning *`,
+    [id]
+  );
+  if (!result.rows[0]) throw statusError(404, 'Media item not found in trash.', 'MEDIA_NOT_FOUND');
+  return { ok: true, item: mediaRow(result.rows[0]) };
+}
+
+async function permanentlyDeleteMedia(id) {
   const client = await getPool().connect();
   try {
     await client.query('begin');
@@ -342,7 +370,7 @@ async function deleteMedia(id) {
     await deleteObject(row.object_key);
     await client.query('delete from app_media where id = $1::uuid', [id]);
     await client.query('commit');
-    return { ok: true, deleted: { id, object_key: row.object_key } };
+    return { ok: true, permanently_deleted: { id, object_key: row.object_key } };
   } catch (error) {
     await client.query('rollback').catch(() => null);
     throw error;
@@ -549,11 +577,18 @@ async function handleApi(req, res) {
     return sendJson(req, res, payload, 201, { 'Server-Timing': mediaTiming(started, 'media-upload', stageStarted) });
   }
 
+  const restoreMatch = route.match(/^\/api\/media\/([0-9a-f-]{36})\/restore$/i);
+  if (restoreMatch && method === 'POST') {
+    if (!canManageMedia(user)) throw statusError(403, 'You do not have permission to restore media.', 'FORBIDDEN');
+    return sendJson(req, res, await restoreMedia(restoreMatch[1]));
+  }
+
   const match = route.match(/^\/api\/media\/([0-9a-f-]{36})$/i);
   if (match && method === 'GET') return sendJson(req, res, await getMedia(match[1]), 200, { 'Server-Timing': mediaTiming(started, 'media-query', stageStarted) });
   if (match && method === 'PATCH') return sendJson(req, res, await updateMedia(match[1], await readJson(req)));
   if (match && method === 'DELETE') {
     if (!canManageMedia(user)) throw statusError(403, 'You do not have permission to delete media.', 'FORBIDDEN');
+    if (url.searchParams.get('permanent') === 'true') return sendJson(req, res, await permanentlyDeleteMedia(match[1]));
     return sendJson(req, res, await deleteMedia(match[1]));
   }
   throw statusError(404, 'API route not found.', 'NOT_FOUND');

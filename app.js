@@ -10,6 +10,7 @@ const state = {
   items: [],
   nextCursor: null,
   loading: false,
+  view: 'library',
   filters: { search: '', type: 'all', folder: '' },
   uploads: []
 };
@@ -20,6 +21,7 @@ function icon(name) {
     search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><rect x="2" y="2" width="13" height="13" rx="2"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 16h10l1-16"/>',
+    restore: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
     image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
     video: '<rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10 4-2v8l-4-2"/>',
@@ -109,6 +111,12 @@ function mediaCard(item) {
     : item.media_type === 'video'
       ? `<video src="${esc(item.public_url)}" preload="metadata" muted></video>`
       : `<div class="file-preview">${mediaIcon(item.media_type)}</div>`;
+  const trashActions = `<button class="icon-button" data-act="restore" data-id="${esc(item.id)}" title="Restore">${icon('restore')}</button>
+      <button class="icon-button danger" data-act="delete-forever" data-id="${esc(item.id)}" title="Delete forever">${icon('trash')}</button>`;
+  const libraryActions = `<button class="icon-button" data-act="copy-url" data-id="${esc(item.id)}" title="Copy URL">${icon('copy')}</button>
+      ${embedCode(item) ? `<button class="icon-button" data-act="copy-embed" data-id="${esc(item.id)}" title="Copy embed">${icon('link')}</button>` : ''}
+      <button class="icon-button" data-act="details" data-id="${esc(item.id)}" title="Details">${icon('edit')}</button>
+      <button class="icon-button danger" data-act="delete" data-id="${esc(item.id)}" title="Move to trash">${icon('trash')}</button>`;
   return `<article class="media-card" data-id="${esc(item.id)}">
     <button class="media-preview" data-act="details" data-id="${esc(item.id)}">${preview}</button>
     <div class="media-copy">
@@ -117,10 +125,7 @@ function mediaCard(item) {
       <small>${esc(item.mime_type || '')}</small>
     </div>
     <div class="card-actions">
-      <button class="icon-button" data-act="copy-url" data-id="${esc(item.id)}" title="Copy URL">${icon('copy')}</button>
-      ${embedCode(item) ? `<button class="icon-button" data-act="copy-embed" data-id="${esc(item.id)}" title="Copy embed">${icon('link')}</button>` : ''}
-      <button class="icon-button" data-act="details" data-id="${esc(item.id)}" title="Details">${icon('edit')}</button>
-      <button class="icon-button danger" data-act="delete" data-id="${esc(item.id)}" title="Delete">${icon('trash')}</button>
+      ${state.view === 'trash' ? trashActions : libraryActions}
     </div>
   </article>`;
 }
@@ -149,27 +154,33 @@ function libraryView() {
   const dropTitle = localMediaOnly ? 'Drag images or videos here' : 'Drag files here';
   const dropHint = localMediaOnly ? 'PNG, JPG, WebP, GIF, SVG, MP4, WebM or MOV' : 'or choose files from your device';
   const typeOptions = localMediaOnly ? ['all', 'image', 'video'] : ['all', 'image', 'video', 'document', 'other'];
+  const trashView = state.view === 'trash';
+  const title = trashView ? 'Trash' : 'Media Library';
+  const description = trashView ? 'Restore deleted media or remove it permanently.' : intro;
   return `<div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span>ML</span><b>Media Library</b></div>
-      <button class="nav active">${icon('image')}Media Library</button>
+      <button class="nav ${trashView ? '' : 'active'}" data-act="view-library">${icon('image')}Media Library</button>
+      <button class="nav ${trashView ? 'active' : ''}" data-act="view-trash">${icon('trash')}Trash</button>
       <button class="nav" data-act="logout">${icon('close')}Sign out</button>
     </aside>
     <main class="workspace">
       <header class="heading">
-        <div><h1>Media Library</h1><p>${intro}</p></div>
-        <div class="actions">
+        <div><h1>${title}</h1><p>${description}</p></div>
+        ${trashView ? '' : `<div class="actions">
           <button class="button soft" data-act="new-folder">New folder</button>
           <button class="button primary" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>${icon('upload')}${uploadLabel}</button>
           <input id="file-input" type="file" ${accepts} multiple hidden>
-        </div>
+        </div>`}
       </header>
-      ${state.storageConfigured ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
+      ${state.storageConfigured || trashView ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
+      ${trashView ? '<div class="notice">Items in Trash are hidden from the main library until you restore them.</div>' : ''}
+      ${trashView ? '' : `
       <section class="drop-zone ${state.storageConfigured ? '' : 'disabled'}" id="drop-zone">
         <div>${icon('upload')}<strong>${dropTitle}</strong><span>${dropHint}</span></div>
         <button class="button" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>Browse Media</button>
       </section>
-      ${uploading}
+      ${uploading}`}
       <section class="toolbar">
         <label class="search">${icon('search')}<input id="search" placeholder="Search media..." value="${esc(state.filters.search)}"></label>
         <select id="type-filter">
@@ -178,7 +189,7 @@ function libraryView() {
         <input id="folder-filter" placeholder="Folder" value="${esc(state.filters.folder)}">
       </section>
       <section class="media-grid" id="media-grid">
-        ${state.items.length ? state.items.map(mediaCard).join('') : `<div class="empty">${icon('image')}<h2>No media yet</h2><p>${localMediaOnly ? 'Upload your first image or video.' : 'Upload your first image, video or document.'}</p></div>`}
+        ${state.items.length ? state.items.map(mediaCard).join('') : `<div class="empty">${icon(trashView ? 'trash' : 'image')}<h2>${trashView ? 'Trash is empty' : 'No media yet'}</h2><p>${trashView ? 'Deleted media will appear here.' : localMediaOnly ? 'Upload your first image or video.' : 'Upload your first image, video or document.'}</p></div>`}
       </section>
       ${state.nextCursor ? `<div class="load-more"><button class="button soft" data-act="load-more">Load more</button></div>` : ''}
     </main>
@@ -252,6 +263,7 @@ async function bootstrap() {
 function mediaQuery(reset = false) {
   const params = new URLSearchParams({ limit: '50' });
   if (!reset && state.nextCursor) params.set('cursor', state.nextCursor);
+  if (state.view === 'trash') params.set('trash', 'true');
   if (state.filters.type && state.filters.type !== 'all') params.set('type', state.filters.type);
   if (state.filters.folder.trim()) params.set('folder', state.filters.folder.trim());
   if (state.filters.search.trim()) params.set('search', state.filters.search.trim());
@@ -391,6 +403,7 @@ async function showDetails(id) {
   const existing = state.items.find(item => item.id === id);
   const result = await api(`/api/media/${encodeURIComponent(id)}`, { method: 'GET' });
   const item = result.item || existing;
+  const trashView = state.view === 'trash' || Boolean(item.deleted_at);
   const embed = embedCode(item);
   const preview = item.media_type === 'image'
     ? `<img src="${esc(item.public_url)}" alt="${esc(item.alt_text || item.title || item.file_name)}">`
@@ -413,17 +426,19 @@ async function showDetails(id) {
           <dt>Uploaded by</dt><dd>${esc(item.uploaded_by || 'Unknown')}</dd>
         </dl>
       </div>
-      ${embed ? `<label>Embed code<textarea readonly>${esc(embed)}</textarea></label><button type="button" class="button soft" data-act="dialog-copy-embed">${icon('copy')}Copy Embed</button>` : ''}
+      ${trashView ? '<div class="notice">This item is in Trash. Restore it before editing metadata.</div>' : ''}
+      ${!trashView && embed ? `<label>Embed code<textarea readonly>${esc(embed)}</textarea></label><button type="button" class="button soft" data-act="dialog-copy-embed">${icon('copy')}Copy Embed</button>` : ''}
       <div class="form-grid">
-        <label>Title<input name="title" value="${esc(item.title || '')}"></label>
-        <label>Alt text<input name="alt_text" value="${esc(item.alt_text || '')}"></label>
-        <label>Folder<input name="folder" value="${esc(item.folder || '')}"></label>
-        <label>Caption<input name="caption" value="${esc(item.caption || '')}"></label>
+        <label>Title<input name="title" value="${esc(item.title || '')}" ${trashView ? 'disabled' : ''}></label>
+        <label>Alt text<input name="alt_text" value="${esc(item.alt_text || '')}" ${trashView ? 'disabled' : ''}></label>
+        <label>Folder<input name="folder" value="${esc(item.folder || '')}" ${trashView ? 'disabled' : ''}></label>
+        <label>Caption<input name="caption" value="${esc(item.caption || '')}" ${trashView ? 'disabled' : ''}></label>
       </div>
-      <label>Description<textarea name="description">${esc(item.description || '')}</textarea></label>
+      <label>Description<textarea name="description" ${trashView ? 'disabled' : ''}>${esc(item.description || '')}</textarea></label>
       <div class="dialog-actions">
-        <button type="button" class="button danger" data-act="dialog-delete">${icon('trash')}Delete</button>
-        <button class="button primary" value="save">${icon('edit')}Save</button>
+        ${trashView
+          ? `<button type="button" class="button" data-act="dialog-restore">${icon('restore')}Restore</button><button type="button" class="button danger" data-act="dialog-delete-forever">${icon('trash')}Delete forever</button>`
+          : `<button type="button" class="button danger" data-act="dialog-delete">${icon('trash')}Move to trash</button><button class="button primary" value="save">${icon('edit')}Save</button>`}
       </div>
     </div>
   </form>`;
@@ -445,9 +460,9 @@ async function saveDetails(form) {
 
 async function deleteMedia(id) {
   const confirmed = await confirmAction({
-    title: 'Delete media',
-    message: 'This media item will be permanently deleted.',
-    confirmLabel: 'Delete',
+    title: 'Move to Trash',
+    message: 'This media item will be moved to Trash. You can restore it later.',
+    confirmLabel: 'Move to Trash',
     danger: true
   });
   if (!confirmed) return;
@@ -455,7 +470,30 @@ async function deleteMedia(id) {
   state.items = state.items.filter(item => item.id !== id);
   $('#details')?.close();
   render();
-  toast('Media deleted');
+  toast('Media moved to Trash');
+}
+
+async function restoreMedia(id) {
+  await api(`/api/media/${encodeURIComponent(id)}/restore`, { method: 'POST', body: {} });
+  state.items = state.items.filter(item => item.id !== id);
+  $('#details')?.close();
+  render();
+  toast('Media restored');
+}
+
+async function deleteForever(id) {
+  const confirmed = await confirmAction({
+    title: 'Delete forever',
+    message: 'This will permanently delete the media file and cannot be undone.',
+    confirmLabel: 'Delete forever',
+    danger: true
+  });
+  if (!confirmed) return;
+  await api(`/api/media/${encodeURIComponent(id)}?permanent=true`, { method: 'DELETE' });
+  state.items = state.items.filter(item => item.id !== id);
+  $('#details')?.close();
+  render();
+  toast('Media permanently deleted');
 }
 
 document.addEventListener('click', async event => {
@@ -476,6 +514,16 @@ document.addEventListener('click', async event => {
       state.user = null;
       render();
     }
+    if (act === 'view-library' || act === 'view-trash') {
+      const nextView = act === 'view-trash' ? 'trash' : 'library';
+      if (state.view !== nextView) {
+        state.view = nextView;
+        state.nextCursor = null;
+        state.items = [];
+        render();
+        await loadMedia(true);
+      }
+    }
     if (act === 'new-folder') {
       showFolderDialog();
     }
@@ -490,9 +538,13 @@ document.addEventListener('click', async event => {
     }
     if (act === 'details') await showDetails(id);
     if (act === 'delete') await deleteMedia(id);
+    if (act === 'restore') await restoreMedia(id);
+    if (act === 'delete-forever') await deleteForever(id);
     if (act === 'dialog-copy-url') await copyText($('#details').dataset.url, 'URL copied');
     if (act === 'dialog-copy-embed') await copyText($('#details').dataset.embed, 'Embed copied');
     if (act === 'dialog-delete') await deleteMedia($('#details').dataset.id);
+    if (act === 'dialog-restore') await restoreMedia($('#details').dataset.id);
+    if (act === 'dialog-delete-forever') await deleteForever($('#details').dataset.id);
     if (act === 'close-dialog') $('#details').close();
     if (act === 'close-folder-dialog') $('#folder-dialog').close();
   } catch (error) {

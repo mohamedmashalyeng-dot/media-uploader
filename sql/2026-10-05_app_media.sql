@@ -19,9 +19,13 @@ CREATE TABLE IF NOT EXISTS app_media (
     height INTEGER,
     duration_seconds NUMERIC,
     uploaded_by TEXT,
+    deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE app_media
+ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS app_media_created_at_idx
 ON app_media (created_at DESC, id DESC);
@@ -31,3 +35,7 @@ ON app_media (media_type, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS app_media_folder_idx
 ON app_media (folder, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS app_media_deleted_at_idx
+ON app_media (deleted_at DESC, id DESC)
+WHERE deleted_at IS NOT NULL;

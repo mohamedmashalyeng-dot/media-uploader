@@ -2,6 +2,8 @@
 
 Private Media Library / Asset Manager for website assets.
 
+Includes upload, folders, metadata editing, copyable URLs/embed code, and Trash with restore or permanent delete.
+
 ## Setup
 
 1. Install dependencies:
