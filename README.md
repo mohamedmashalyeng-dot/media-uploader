@@ -1,6 +1,6 @@
-# Media Uploader
+# ORVANN Assets
 
-Private Media Library / Asset Manager for website assets.
+Private Media Library / Asset Manager for ORVANN website assets.
 
 Includes upload, folders, metadata editing, copyable URLs/embed code, and Trash with restore or permanent delete.
 

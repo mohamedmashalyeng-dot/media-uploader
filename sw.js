@@ -1,5 +1,5 @@
-const CACHE = 'media-library-shell-v20261006-media-bulk-select';
-const SHELL = ['/offline.html', '/styles.css?v=20261006-media-bulk-select', '/app.js?v=20261006-media-bulk-select'];
+const CACHE = 'orvann-assets-shell-v20261006-orvann-identity';
+const SHELL = ['/offline.html', '/styles.css?v=20261006-orvann-identity', '/app.js?v=20261006-orvann-identity'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));

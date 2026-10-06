@@ -147,8 +147,8 @@ function mediaCard(item) {
 function loginView() {
   return `<main class="login">
     <section class="login-panel">
-      <div class="brand-mark">ML</div>
-      <h1>Media Library</h1>
+      <div class="brand-mark">OV</div>
+      <h1>ORVANN Assets</h1>
       ${state.authConfigured ? `<form id="login-form">
         <label>Email<input name="email" type="email" autocomplete="username" required></label>
         <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
@@ -164,12 +164,12 @@ function libraryView() {
   const localMediaOnly = isLocalStorage() || Array.isArray(localTypes);
   const accepts = localMediaOnly ? 'accept="image/*,video/mp4,video/webm,video/quicktime"' : '';
   const uploadLabel = localMediaOnly ? 'Upload media' : 'Upload files';
-  const intro = localMediaOnly ? 'Image and video manager for website assets.' : 'Private asset manager for website files.';
+  const intro = localMediaOnly ? 'Image and video manager for ORVANN website assets.' : 'Private asset manager for ORVANN website files.';
   const dropTitle = localMediaOnly ? 'Drag images or videos here' : 'Drag files here';
   const dropHint = localMediaOnly ? 'PNG, JPG, WebP, GIF, SVG, MP4, WebM or MOV' : 'or choose files from your device';
   const typeOptions = localMediaOnly ? ['all', 'image', 'video'] : ['all', 'image', 'video', 'document', 'other'];
   const trashView = state.view === 'trash';
-  const title = trashView ? 'Trash' : 'Media Library';
+  const title = trashView ? 'Trash' : 'ORVANN Assets';
   const description = trashView ? 'Restore deleted media or remove it permanently.' : intro;
   const selection = trashView ? state.trashSelection : state.mediaSelection;
   const selectedCount = selection.size;
@@ -185,8 +185,8 @@ function libraryView() {
       </section>` : '';
   return `<div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span>ML</span><b>Media Library</b></div>
-      <button class="nav ${trashView ? '' : 'active'}" data-act="view-library">${icon('image')}Media Library</button>
+      <div class="brand"><span>OV</span><b>ORVANN Assets</b></div>
+      <button class="nav ${trashView ? '' : 'active'}" data-act="view-library">${icon('image')}Media</button>
       <button class="nav ${trashView ? 'active' : ''}" data-act="view-trash">${icon('trash')}Trash</button>
       <button class="nav" data-act="logout">${icon('close')}Sign out</button>
     </aside>
