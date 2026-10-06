@@ -14,7 +14,9 @@ const state = {
   view: 'library',
   filters: { search: '', type: 'all', folder: '' },
   trashSelection: new Set(),
-  uploads: []
+  uploads: [],
+  uploadQueue: [],
+  uploadProcessing: false
 };
 
 function icon(name) {
@@ -372,6 +374,43 @@ function updateUploadList() {
   if (list) list.innerHTML = state.uploads.map(uploadRow).join('');
 }
 
+function removeUpload(upload) {
+  state.uploads = state.uploads.filter(row => row !== upload);
+}
+
+async function processUploadQueue() {
+  if (state.uploadProcessing) return;
+  state.uploadProcessing = true;
+  let successCount = 0;
+  let failureCount = 0;
+
+  while (state.uploadQueue.length) {
+    const upload = state.uploadQueue.shift();
+    upload.state = 'Uploading';
+    updateUploadList();
+    try {
+      const usePresigned = !isLocalStorage() && (clientMediaType(upload.file) === 'video' || upload.file.size > 15 * 1024 * 1024);
+      const item = usePresigned ? await uploadViaPresigned(upload.file, upload) : await uploadViaBackend(upload.file, upload);
+      successCount += 1;
+      removeUpload(upload);
+      if (item && state.view !== 'trash') state.items.unshift(item);
+      render();
+    } catch (error) {
+      delete upload.file;
+      upload.failed = true;
+      upload.progress = 0;
+      upload.state = `Failed: ${error.message}`;
+      failureCount += 1;
+      updateUploadList();
+    }
+  }
+
+  state.uploadProcessing = false;
+  if (successCount && failureCount) toast(`${successCount} uploaded, ${failureCount} failed.`);
+  else if (successCount) toast(`${successCount} file${successCount === 1 ? '' : 's'} uploaded.`);
+  else if (failureCount) toast('Upload failed.');
+}
+
 async function uploadFiles(files) {
   const selected = [...files];
   if (!selected.length) return;
@@ -383,35 +422,11 @@ async function uploadFiles(files) {
     toast('Configure media storage before uploading.');
     return;
   }
-  const batchUploads = selected.map(file => ({ name: file.name, progress: 0, state: 'Waiting' }));
-  state.uploads = [...batchUploads, ...state.uploads];
+  const batchUploads = selected.map(file => ({ file, name: file.name, progress: 0, state: 'Waiting' }));
+  state.uploads = [...state.uploads, ...batchUploads];
+  state.uploadQueue.push(...batchUploads);
   render();
-  let successCount = 0;
-  let failureCount = 0;
-  await Promise.all(selected.map(async (file, index) => {
-    const upload = batchUploads[index];
-    upload.state = 'Uploading';
-    updateUploadList();
-    try {
-      const usePresigned = !isLocalStorage() && (clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024);
-      const item = usePresigned ? await uploadViaPresigned(file, upload) : await uploadViaBackend(file, upload);
-      upload.progress = 100;
-      upload.state = 'Uploaded';
-      if (item) state.items.unshift(item);
-      successCount += 1;
-      updateUploadList();
-    } catch (error) {
-      upload.failed = true;
-      upload.progress = 0;
-      upload.state = `Failed: ${error.message}`;
-      failureCount += 1;
-      updateUploadList();
-    }
-  }));
-  render();
-  if (successCount && failureCount) toast(`${successCount} uploaded, ${failureCount} failed.`);
-  else if (successCount) toast(`${successCount} file${successCount === 1 ? '' : 's'} uploaded.`);
-  else toast('Upload failed.');
+  processUploadQueue();
 }
 
 async function showDetails(id) {
