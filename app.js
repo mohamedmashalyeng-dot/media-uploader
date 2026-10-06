@@ -6,6 +6,7 @@ const state = {
   user: null,
   authConfigured: true,
   storageConfigured: true,
+  storageDriver: 'local',
   localUploadTypes: null,
   items: [],
   nextCursor: null,
@@ -85,6 +86,10 @@ function mediaIcon(type) {
   return icon('file');
 }
 
+function isLocalStorage() {
+  return state.storageDriver === 'local';
+}
+
 function embedCode(item) {
   const alt = esc(item.alt_text || item.title || item.file_name || '');
   if (item.media_type === 'image') return `<img src="${item.public_url}" alt="${alt}">`;
@@ -147,7 +152,7 @@ function loginView() {
 function libraryView() {
   const uploading = state.uploads.length ? `<section class="upload-list">${state.uploads.map(uploadRow).join('')}</section>` : '';
   const localTypes = state.localUploadTypes || null;
-  const localMediaOnly = Array.isArray(localTypes);
+  const localMediaOnly = isLocalStorage() || Array.isArray(localTypes);
   const accepts = localMediaOnly ? 'accept="image/*,video/mp4,video/webm,video/quicktime"' : '';
   const uploadLabel = localMediaOnly ? 'Upload media' : 'Upload files';
   const intro = localMediaOnly ? 'Image and video manager for website assets.' : 'Private asset manager for website files.';
@@ -255,6 +260,7 @@ async function bootstrap() {
   state.user = result.user;
   state.authConfigured = result.auth_configured !== false;
   state.storageConfigured = result.media_storage_configured !== false;
+  state.storageDriver = result.storage_driver || 'local';
   state.localUploadTypes = Array.isArray(result.local_upload_types) ? result.local_upload_types : null;
   render();
   if (state.user) await loadMedia(true);
@@ -356,7 +362,7 @@ function updateUploadList() {
 async function uploadFiles(files) {
   const selected = [...files];
   if (!selected.length) return;
-  if (state.localUploadTypes && selected.some(file => !state.localUploadTypes.includes(clientMediaType(file)))) {
+  if (isLocalStorage() && selected.some(file => !['image', 'video'].includes(clientMediaType(file)))) {
     toast('Local mode supports images and videos only.');
     return;
   }
@@ -378,7 +384,7 @@ async function uploadFiles(files) {
     upload.state = 'Uploading';
     updateUploadList();
     try {
-      const usePresigned = !state.localUploadTypes && (clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024);
+      const usePresigned = !isLocalStorage() && (clientMediaType(file) === 'video' || file.size > 15 * 1024 * 1024);
       const item = usePresigned ? await uploadViaPresigned(file, upload) : await uploadViaBackend(file, upload);
       upload.progress = 100;
       upload.state = 'Uploaded';
