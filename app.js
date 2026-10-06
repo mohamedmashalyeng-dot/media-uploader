@@ -13,6 +13,7 @@ const state = {
   loading: false,
   view: 'library',
   filters: { search: '', type: 'all', folder: '' },
+  mediaSelection: new Set(),
   trashSelection: new Set(),
   uploads: [],
   uploadQueue: [],
@@ -115,6 +116,8 @@ function uploadRow(upload) {
 }
 
 function mediaCard(item) {
+  const selection = state.view === 'trash' ? state.trashSelection : state.mediaSelection;
+  const selectionScope = state.view === 'trash' ? 'trash' : 'media';
   const preview = item.media_type === 'image'
     ? `<img src="${esc(item.public_url)}" alt="${esc(item.alt_text || item.title || item.file_name)}" loading="lazy">`
     : item.media_type === 'video'
@@ -128,7 +131,7 @@ function mediaCard(item) {
       <button class="icon-button" data-act="details" data-id="${esc(item.id)}" title="Details">${icon('edit')}</button>
       <button class="icon-button danger" data-act="delete" data-id="${esc(item.id)}" title="Move to trash">${icon('trash')}</button>`;
   return `<article class="media-card" data-id="${esc(item.id)}">
-    ${state.view === 'trash' ? `<label class="media-select" title="Select media"><input type="checkbox" class="trash-select" data-id="${esc(item.id)}" ${state.trashSelection.has(item.id) ? 'checked' : ''}><span></span></label>` : ''}
+    <label class="media-select" title="Select media"><input type="checkbox" class="item-select" data-selection="${selectionScope}" data-id="${esc(item.id)}" ${selection.has(item.id) ? 'checked' : ''}><span></span></label>
     <button class="media-preview" data-act="details" data-id="${esc(item.id)}">${preview}</button>
     <div class="media-copy">
       <strong>${esc(item.title || item.file_name)}</strong>
@@ -168,8 +171,18 @@ function libraryView() {
   const trashView = state.view === 'trash';
   const title = trashView ? 'Trash' : 'Media Library';
   const description = trashView ? 'Restore deleted media or remove it permanently.' : intro;
-  const selectedCount = state.trashSelection.size;
-  const allVisibleSelected = trashView && state.items.length > 0 && state.items.every(item => state.trashSelection.has(item.id));
+  const selection = trashView ? state.trashSelection : state.mediaSelection;
+  const selectedCount = selection.size;
+  const allVisibleSelected = state.items.length > 0 && state.items.every(item => selection.has(item.id));
+  const bulkBar = state.items.length ? `<section class="bulk-bar">
+        <label><input type="checkbox" id="${trashView ? 'select-all-trash' : 'select-all-media'}" ${allVisibleSelected ? 'checked' : ''}> Select all visible</label>
+        <span>${selectedCount} selected</span>
+        ${trashView
+          ? `<button class="button" data-act="restore-selected" ${selectedCount ? '' : 'disabled'}>${icon('restore')}Restore selected</button>
+             <button class="button danger" data-act="delete-selected-forever" ${selectedCount ? '' : 'disabled'}>${icon('trash')}Delete selected</button>`
+          : `<button class="button" data-act="download-selected" ${selectedCount ? '' : 'disabled'}>${icon('download')}Download selected</button>
+             <button class="button danger" data-act="delete-selected" ${selectedCount ? '' : 'disabled'}>${icon('trash')}Move selected to Trash</button>`}
+      </section>` : '';
   return `<div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span>ML</span><b>Media Library</b></div>
@@ -188,18 +201,13 @@ function libraryView() {
       </header>
       ${state.storageConfigured || trashView ? '' : '<div class="notice danger">Media storage is not configured. Add the S3-compatible storage environment variables before uploading.</div>'}
       ${trashView ? '<div class="notice">Items in Trash are hidden from the main library until you restore them.</div>' : ''}
-      ${trashView && state.items.length ? `<section class="bulk-bar">
-        <label><input type="checkbox" id="select-all-trash" ${allVisibleSelected ? 'checked' : ''}> Select all visible</label>
-        <span>${selectedCount} selected</span>
-        <button class="button" data-act="restore-selected" ${selectedCount ? '' : 'disabled'}>${icon('restore')}Restore selected</button>
-        <button class="button danger" data-act="delete-selected-forever" ${selectedCount ? '' : 'disabled'}>${icon('trash')}Delete selected</button>
-      </section>` : ''}
       ${trashView ? '' : `
       <section class="drop-zone ${state.storageConfigured ? '' : 'disabled'}" id="drop-zone">
         <div>${icon('upload')}<strong>${dropTitle}</strong><span>${dropHint}</span></div>
         <button class="button" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>Browse Media</button>
       </section>
       ${uploading}`}
+      ${bulkBar}
       <section class="toolbar">
         <label class="search">${icon('search')}<input id="search" placeholder="Search media..." value="${esc(state.filters.search)}"></label>
         <select id="type-filter">
@@ -297,7 +305,10 @@ async function loadMedia(reset = false) {
     const result = await api(mediaQuery(reset), { method: 'GET' });
     state.items = reset ? result.items || [] : [...state.items, ...(result.items || [])];
     state.nextCursor = result.next_cursor || null;
-    if (reset) state.trashSelection.clear();
+    if (reset) {
+      state.mediaSelection.clear();
+      state.trashSelection.clear();
+    }
     render();
   } catch (error) {
     toast(error.message);
@@ -503,9 +514,27 @@ async function deleteMedia(id) {
   if (!confirmed) return;
   await api(`/api/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
   state.items = state.items.filter(item => item.id !== id);
+  state.mediaSelection.delete(id);
   $('#details')?.close();
   render();
   toast('Media moved to Trash');
+}
+
+async function deleteSelectedMedia() {
+  const ids = [...state.mediaSelection].filter(id => state.items.some(item => item.id === id));
+  if (!ids.length) return;
+  const confirmed = await confirmAction({
+    title: 'Move selected to Trash',
+    message: `${ids.length} selected item${ids.length === 1 ? '' : 's'} will be moved to Trash. You can restore them later.`,
+    confirmLabel: 'Move to Trash',
+    danger: true
+  });
+  if (!confirmed) return;
+  await Promise.all(ids.map(id => api(`/api/media/${encodeURIComponent(id)}`, { method: 'DELETE' })));
+  state.items = state.items.filter(item => !ids.includes(item.id));
+  ids.forEach(id => state.mediaSelection.delete(id));
+  render();
+  toast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to Trash`);
 }
 
 function downloadMedia(item) {
@@ -516,6 +545,17 @@ function downloadMedia(item) {
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function downloadSelectedMedia() {
+  const items = [...state.mediaSelection]
+    .map(id => state.items.find(item => item.id === id))
+    .filter(Boolean);
+  if (!items.length) return;
+  items.forEach((item, index) => {
+    setTimeout(() => downloadMedia(item), index * 250);
+  });
+  toast(`${items.length} download${items.length === 1 ? '' : 's'} started`);
 }
 
 async function restoreMedia(id) {
@@ -592,6 +632,7 @@ document.addEventListener('click', async event => {
         state.view = nextView;
         state.nextCursor = null;
         state.items = [];
+        state.mediaSelection.clear();
         state.trashSelection.clear();
         render();
         await loadMedia(true);
@@ -617,6 +658,8 @@ document.addEventListener('click', async event => {
     if (act === 'delete') await deleteMedia(id);
     if (act === 'restore') await restoreMedia(id);
     if (act === 'delete-forever') await deleteForever(id);
+    if (act === 'download-selected') downloadSelectedMedia();
+    if (act === 'delete-selected') await deleteSelectedMedia();
     if (act === 'restore-selected') await restoreSelectedMedia();
     if (act === 'delete-selected-forever') await deleteSelectedForever();
     if (act === 'dialog-copy-url') await copyText($('#details').dataset.url, 'URL copied');
@@ -640,10 +683,16 @@ document.addEventListener('change', event => {
     state.filters.type = event.target.value;
     loadMedia(true);
   }
-  if (event.target.classList.contains('trash-select')) {
+  if (event.target.classList.contains('item-select')) {
     const id = event.target.dataset.id;
-    if (event.target.checked) state.trashSelection.add(id);
-    else state.trashSelection.delete(id);
+    const selection = event.target.dataset.selection === 'trash' ? state.trashSelection : state.mediaSelection;
+    if (event.target.checked) selection.add(id);
+    else selection.delete(id);
+    render();
+  }
+  if (event.target.id === 'select-all-media') {
+    if (event.target.checked) state.items.forEach(item => state.mediaSelection.add(item.id));
+    else state.items.forEach(item => state.mediaSelection.delete(item.id));
     render();
   }
   if (event.target.id === 'select-all-trash') {

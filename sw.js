@@ -1,5 +1,5 @@
-const CACHE = 'media-library-shell-v20261006-ordered-upload-queue';
-const SHELL = ['/offline.html', '/styles.css?v=20261006-ordered-upload-queue', '/app.js?v=20261006-ordered-upload-queue'];
+const CACHE = 'media-library-shell-v20261006-media-bulk-select';
+const SHELL = ['/offline.html', '/styles.css?v=20261006-media-bulk-select', '/app.js?v=20261006-media-bulk-select'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
