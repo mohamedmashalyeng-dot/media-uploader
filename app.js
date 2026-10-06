@@ -2,6 +2,7 @@
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+const savedTheme = localStorage.getItem('orvann-theme');
 const state = {
   user: null,
   authConfigured: true,
@@ -15,6 +16,7 @@ const state = {
   filters: { search: '', type: 'all', folder: '' },
   mediaSelection: new Set(),
   trashSelection: new Set(),
+  theme: savedTheme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
   uploads: [],
   uploadQueue: [],
   uploadProcessing: false
@@ -33,10 +35,38 @@ function icon(name) {
     video: '<rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10 4-2v8l-4-2"/>',
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    moon: '<path d="M20.8 13.4A8 8 0 1 1 10.6 3.2 6.5 6.5 0 0 0 20.8 13.4Z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
     folder: '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/>',
     link: '<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>'
   };
   return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.file}</svg>`;
+}
+
+function brandLogo(mode = 'full') {
+  const compact = mode === 'compact';
+  return `<div class="orvann-logo ${compact ? 'compact' : ''}" aria-label="ORVANN">
+    <span class="orvann-mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48" role="img">
+        <circle cx="21" cy="24" r="14"/>
+        <path d="M15 24h12l6-10"/>
+        <path d="M26 24l8 10 9-20"/>
+      </svg>
+    </span>
+    ${compact ? '' : `<span class="orvann-word"><b>ORVANN</b><small>The Future Business Builder</small></span>`}
+  </div>`;
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = state.theme;
+  document.documentElement.style.colorScheme = state.theme;
+}
+
+function toggleTheme() {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('orvann-theme', state.theme);
+  applyTheme();
+  render();
 }
 
 async function api(path, options = {}) {
@@ -147,7 +177,8 @@ function mediaCard(item) {
 function loginView() {
   return `<main class="login">
     <section class="login-panel">
-      <div class="brand-mark">OV</div>
+      <button class="icon-button login-theme" data-act="toggle-theme" title="${state.theme === 'dark' ? 'Light mode' : 'Dark mode'}">${icon(state.theme === 'dark' ? 'sun' : 'moon')}</button>
+      ${brandLogo()}
       <h1>ORVANN Assets</h1>
       ${state.authConfigured ? `<form id="login-form">
         <label>Email<input name="email" type="email" autocomplete="username" required></label>
@@ -185,9 +216,10 @@ function libraryView() {
       </section>` : '';
   return `<div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span>OV</span><b>ORVANN Assets</b></div>
+      <div class="brand">${brandLogo()}</div>
       <button class="nav ${trashView ? '' : 'active'}" data-act="view-library">${icon('image')}Media</button>
       <button class="nav ${trashView ? 'active' : ''}" data-act="view-trash">${icon('trash')}Trash</button>
+      <button class="nav" data-act="toggle-theme">${icon(state.theme === 'dark' ? 'sun' : 'moon')}${state.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
       <button class="nav" data-act="logout">${icon('close')}Sign out</button>
     </aside>
     <main class="workspace">
@@ -626,6 +658,7 @@ document.addEventListener('click', async event => {
       state.user = null;
       render();
     }
+    if (act === 'toggle-theme') toggleTheme();
     if (act === 'view-library' || act === 'view-trash') {
       const nextView = act === 'view-trash' ? 'trash' : 'library';
       if (state.view !== nextView) {
@@ -759,6 +792,7 @@ document.addEventListener('drop', event => {
   uploadFiles(event.dataTransfer.files);
 });
 
+applyTheme();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => null);
 bootstrap().catch(error => {
   $('#app').innerHTML = `<main class="offline"><h1>Unable to start</h1><p>${esc(error.message)}</p></main>`;
