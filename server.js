@@ -742,6 +742,57 @@ const mime = {
   '.ico': 'image/x-icon'
 };
 
+function serveFile(req, res, filePath, options = {}) {
+  fs.stat(filePath, (error, stat) => {
+    if (error || !stat.isFile()) {
+      sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
+      return;
+    }
+
+    const contentType = mime[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+    const headers = {
+      'Content-Type': contentType,
+      'Content-Length': stat.size,
+      'Cache-Control': options.cacheControl || 'public, max-age=300'
+    };
+    if (options.ranges) headers['Accept-Ranges'] = 'bytes';
+
+    const range = options.ranges ? String(req.headers.range || '') : '';
+    if (range) {
+      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+      if (!match) {
+        res.writeHead(416, { ...headers, 'Content-Range': `bytes */${stat.size}` });
+        res.end();
+        return;
+      }
+      let start = match[1] === '' ? 0 : Number(match[1]);
+      let end = match[2] === '' ? stat.size - 1 : Number(match[2]);
+      if (match[1] === '' && match[2]) {
+        const suffixLength = Math.min(Number(match[2]), stat.size);
+        start = stat.size - suffixLength;
+        end = stat.size - 1;
+      }
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start < 0 || end >= stat.size) {
+        res.writeHead(416, { ...headers, 'Content-Range': `bytes */${stat.size}` });
+        res.end();
+        return;
+      }
+      res.writeHead(206, {
+        ...headers,
+        'Content-Length': end - start + 1,
+        'Content-Range': `bytes ${start}-${end}/${stat.size}`
+      });
+      if (req.method === 'HEAD') res.end();
+      else fs.createReadStream(filePath, { start, end }).pipe(res);
+      return;
+    }
+
+    res.writeHead(200, headers);
+    if (req.method === 'HEAD') res.end();
+    else fs.createReadStream(filePath).pipe(res);
+  });
+}
+
 function serveStatic(req, res) {
   if (!['GET', 'HEAD'].includes(req.method || 'GET')) {
     sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
@@ -757,18 +808,7 @@ function serveStatic(req, res) {
       sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
       return;
     }
-    fs.readFile(filePath, (error, content) => {
-      if (error) {
-        sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
-        return;
-      }
-      res.writeHead(200, {
-        'Content-Type': mime[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-        'Cache-Control': 'public, max-age=31536000, immutable'
-      });
-      if (req.method === 'HEAD') res.end();
-      else res.end(content);
-    });
+    serveFile(req, res, filePath, { cacheControl: 'public, max-age=31536000, immutable', ranges: true });
     return;
   }
   if (pathname === '/') pathname = '/index.html';
@@ -778,18 +818,7 @@ function serveStatic(req, res) {
     return;
   }
   const filePath = path.join(ROOT, pathname.slice(1));
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
-      sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
-      return;
-    }
-    res.writeHead(200, {
-      'Content-Type': mime[path.extname(filePath)] || 'application/octet-stream',
-      'Cache-Control': pathname === '/index.html' ? 'no-store' : 'public, max-age=300'
-    });
-    if (req.method === 'HEAD') res.end();
-    else res.end(content);
-  });
+  serveFile(req, res, filePath, { cacheControl: pathname === '/index.html' ? 'no-store' : 'public, max-age=300' });
 }
 
 const server = http.createServer((req, res) => {
