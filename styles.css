@@ -29,15 +29,15 @@ p{line-height:1.5;color:var(--muted)}
 .button.soft{background:var(--green-soft);border-color:var(--green-soft);color:var(--green)}
 .button.danger,.icon-button.danger{background:#fff5f2;border-color:#efd1ca;color:var(--red)}
 .icon-button{width:38px;height:38px;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--ink);display:inline-flex;align-items:center;justify-content:center}
-.app-shell{display:grid;grid-template-columns:238px minmax(0,1fr);min-height:100dvh}
-.sidebar{border-right:1px solid var(--line);background:#fff;padding:28px 18px;display:flex;flex-direction:column;gap:10px;position:sticky;top:0;height:100dvh}
-.brand{display:flex;align-items:center;gap:10px;margin-bottom:24px}
+.app-shell{min-height:100dvh}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:30px}
+.topnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.brand{display:flex;align-items:center;gap:10px;min-width:max-content}
 .brand span,.brand-mark{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:8px;background:var(--green);color:#fff;font-weight:800}
 .brand b{font-size:15px}
 .nav{display:flex;align-items:center;gap:10px;min-height:44px;padding:10px 12px;border-radius:8px;background:transparent;color:var(--muted);text-align:left;font-size:13px;font-weight:700}
 .nav.active{background:var(--green-soft);color:var(--green)}
-.nav:last-child{margin-top:auto}
-.workspace{padding:34px 40px 56px;max-width:1420px;width:100%;margin:0 auto}
+.workspace{padding:28px 40px 56px;max-width:1420px;width:100%;margin:0 auto}
 .heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:22px}
 .heading p{font-size:13px;margin:0}
 .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -113,11 +113,9 @@ dialog::backdrop{background:rgba(18,29,23,.55)}
   .media-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media(max-width:900px){
-  .app-shell{display:block}
-  .sidebar{position:static;height:auto;flex-direction:row;align-items:center;padding:14px 16px}
-  .brand{margin:0 auto 0 0}
+  .topbar{align-items:flex-start;gap:14px;margin-bottom:22px}
+  .topnav{justify-content:flex-end}
   .nav{min-height:40px}
-  .nav.active{display:none}
   .workspace{padding:24px 18px 40px}
   .heading{display:block}
   .heading .actions{margin-top:14px}
@@ -128,6 +126,9 @@ dialog::backdrop{background:rgba(18,29,23,.55)}
 }
 @media(max-width:620px){
   h1{font-size:26px}
+  .topbar{display:grid}
+  .topnav{justify-content:flex-start}
+  .nav{padding:9px 10px}
   .drop-zone{display:block;text-align:left}
   .drop-zone .button{margin-top:14px;width:100%}
   .upload-row{grid-template-columns:1fr}
