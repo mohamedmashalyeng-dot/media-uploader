@@ -26,6 +26,16 @@ S3_PUBLIC_BASE_URL=https://media.kentbusinesscollege.com
 S3_FORCE_PATH_STYLE=false
 ```
 
+For phase 1 image-only storage on Hostinger shared hosting, you can skip external S3 storage and use local image storage:
+
+```env
+STORAGE_DRIVER=local
+LOCAL_MEDIA_DIR=uploads
+LOCAL_MEDIA_PUBLIC_BASE_URL=/media
+```
+
+In local mode, only images are accepted. Videos and documents should use the S3-compatible mode later.
+
 3. Apply the database migration:
 
 ```bash
@@ -66,7 +76,9 @@ Large videos and files above 15 MB upload directly from the browser to object st
 
 ## Object Storage
 
-Use any S3-compatible provider, such as AWS S3, Backblaze B2, Wasabi, DigitalOcean Spaces, or Cloudflare R2.
+For image-only phase 1, use `STORAGE_DRIVER=local`.
+
+For videos, documents, and long-term scalable storage, use any S3-compatible provider, such as AWS S3, Backblaze B2, Wasabi, DigitalOcean Spaces, or Cloudflare R2.
 
 Backblaze B2 example:
 

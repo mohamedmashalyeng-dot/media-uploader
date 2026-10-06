@@ -12,6 +12,7 @@ const {
   createPublicUrl,
   deleteObject,
   headObject,
+  storageConfig,
   storageConfigured,
   uploadObject
 } = require('./lib/object-storage');
@@ -395,6 +396,9 @@ function parseMultipartUpload(req, user) {
         for (const file of files) {
           if (file.error) throw file.error;
           const key = createObjectKey({ filename: file.filename, mimeType: file.mimeType });
+          if (storageConfig().driver === 'local' && key.mediaType !== 'image') {
+            throw statusError(400, 'Local storage mode currently supports image uploads only.', 'LOCAL_IMAGES_ONLY');
+          }
           const publicUrl = await uploadObject({ key: key.objectKey, body: file.buffer, contentType: file.mimeType });
           try {
             const item = await insertMediaRecord({
@@ -501,7 +505,9 @@ async function handleApi(req, res) {
       ok: true,
       user: publicUser(user),
       auth_configured: configuredAuth(),
-      media_storage_configured: storageConfigured()
+      media_storage_configured: storageConfigured(),
+      storage_driver: storageConfig().driver,
+      image_upload_only: storageConfig().driver === 'local'
     });
   }
   if (route === '/api/login' && method === 'POST') {
@@ -563,6 +569,7 @@ const mime = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.gif': 'image/gif',
   '.ico': 'image/x-icon'
 };
 
@@ -573,6 +580,28 @@ function serveStatic(req, res) {
   }
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let pathname = decodeURIComponent(url.pathname);
+  if (pathname.startsWith('/media/')) {
+    const config = storageConfig();
+    const root = path.resolve(ROOT, config.localMediaDir);
+    const filePath = path.resolve(root, pathname.slice('/media/'.length));
+    if (filePath === root || !filePath.startsWith(`${root}${path.sep}`)) {
+      sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
+      return;
+    }
+    fs.readFile(filePath, (error, content) => {
+      if (error) {
+        sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': mime[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      });
+      if (req.method === 'HEAD') res.end();
+      else res.end(content);
+    });
+    return;
+  }
   if (pathname === '/') pathname = '/index.html';
   const allowed = new Set(['/index.html', '/app.js', '/styles.css', '/sw.js', '/manifest.webmanifest', '/offline.html']);
   if (!allowed.has(pathname)) {
@@ -608,5 +637,6 @@ server.listen(PORT, () => {
   if (!configuredAuth()) missing.push('ADMIN_EMAIL/ADMIN_PASSWORD');
   if (!storageConfigured()) missing.push('S3_* media storage');
   console.log(`Media uploader listening on http://localhost:${PORT}`);
+  console.log(`Media storage driver: ${storageConfig().driver}`);
   if (missing.length) console.warn(`Configuration missing: ${missing.join(', ')}. Existing server routes still boot; affected APIs return clear errors.`);
 });
