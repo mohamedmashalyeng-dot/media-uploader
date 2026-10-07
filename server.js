@@ -812,7 +812,7 @@ function serveStatic(req, res) {
     return;
   }
   if (pathname === '/') pathname = '/index.html';
-  const allowed = new Set(['/index.html', '/app.js', '/styles.css', '/sw.js', '/manifest.webmanifest', '/offline.html']);
+  const allowed = new Set(['/index.html', '/app.js', '/styles.css', '/sw.js', '/manifest.webmanifest', '/offline.html', '/assets/orvann-logo-black.png', '/assets/orvann-logo-white.png']);
   if (!allowed.has(pathname)) {
     sendJson(req, res, { ok: false, error: 'NOT_FOUND', message: 'Not found.' }, 404);
     return;

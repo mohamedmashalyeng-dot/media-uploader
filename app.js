@@ -16,7 +16,7 @@ const state = {
   filters: { search: '', type: 'all', folder: '' },
   mediaSelection: new Set(),
   trashSelection: new Set(),
-  theme: savedTheme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+  theme: savedTheme === 'dark' ? 'dark' : 'light',
   uploads: [],
   uploadQueue: [],
   uploadProcessing: false
@@ -43,18 +43,9 @@ function icon(name) {
   return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.file}</svg>`;
 }
 
-function brandLogo(mode = 'full') {
-  const compact = mode === 'compact';
-  return `<div class="orvann-logo ${compact ? 'compact' : ''}" aria-label="ORVANN">
-    <span class="orvann-mark" aria-hidden="true">
-      <svg viewBox="0 0 48 48" role="img">
-        <circle cx="21" cy="24" r="14"/>
-        <path d="M15 24h12l6-10"/>
-        <path d="M26 24l8 10 9-20"/>
-      </svg>
-    </span>
-    ${compact ? '' : `<span class="orvann-word"><b>ORVANN</b><small>The Future Business Builder</small></span>`}
-  </div>`;
+function brandLogo() {
+  const src = state.theme === 'dark' ? '/assets/orvann-logo-white.png' : '/assets/orvann-logo-black.png';
+  return `<div class="orvann-logo"><img src="${src}" alt="ORVANN - Your Growth Partner" width="480" height="306"></div>`;
 }
 
 function applyTheme() {

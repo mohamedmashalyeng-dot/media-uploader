@@ -26,6 +26,7 @@ manifest.webmanifest
 lib/
 scripts/
 sql/
+assets/
 ```
 
 ## Hostinger Node.js Settings

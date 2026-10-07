@@ -1,5 +1,5 @@
-const CACHE = 'orvann-assets-shell-v20261006-orvann-blue-theme';
-const SHELL = ['/offline.html', '/styles.css?v=20261006-orvann-blue-theme', '/app.js?v=20261006-orvann-blue-theme'];
+const CACHE = 'orvann-assets-shell-v20261007-orvann-light-logo';
+const SHELL = ['/offline.html', '/styles.css?v=20261007-orvann-light-logo', '/app.js?v=20261007-orvann-light-logo'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
