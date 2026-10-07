@@ -16,6 +16,8 @@ const state = {
   filters: { search: '', type: 'all', folder: '' },
   mediaSelection: new Set(),
   trashSelection: new Set(),
+  folders: [],
+  mediaRequest: 0,
   theme: savedTheme === 'dark' ? 'dark' : 'light',
   uploads: [],
   uploadQueue: [],
@@ -180,6 +182,37 @@ function loginView() {
   </main>`;
 }
 
+function sameFolder(a, b) {
+  return String(a || '').toLowerCase() === String(b || '').toLowerCase();
+}
+
+function folderStrip() {
+  const query = state.filters.search.trim().toLowerCase();
+  const folders = query
+    ? state.folders.filter(folder => folder.name.toLowerCase().includes(query) || folder.label.toLowerCase().includes(query))
+    : state.folders;
+  const active = state.filters.folder.trim();
+  return `<section class="folder-strip" aria-label="Folders">
+    <div class="folder-chip ${active ? '' : 'active'}">
+      <button class="folder-open" data-act="open-folder" data-folder="">${icon('image')}<span><b>All media</b></span></button>
+    </div>
+    ${folders.map(folder => `<div class="folder-chip ${sameFolder(folder.name, active) ? 'active' : ''}">
+      <button class="folder-open" data-act="open-folder" data-folder="${esc(folder.name)}" title="${esc(folder.name)}">
+        ${icon('folder')}<span><b dir="auto">${esc(folder.name)}</b><small>${folder.item_count} item${folder.item_count === 1 ? '' : 's'}</small></span>
+        ${folder.label ? `<em class="folder-label" dir="auto">${esc(folder.label)}</em>` : ''}
+      </button>
+      <button class="folder-edit" data-act="edit-folder" data-id="${esc(folder.id)}" title="Edit folder">${icon('edit')}</button>
+    </div>`).join('')}
+    ${query && !folders.length ? `<span class="folder-empty">No folders match "${esc(state.filters.search.trim())}"</span>` : ''}
+  </section>`;
+}
+
+function folderOptions(current) {
+  const names = state.folders.map(folder => folder.name);
+  if (current && !names.some(name => sameFolder(name, current))) names.push(current);
+  return names.map(name => `<option value="${esc(name)}" ${sameFolder(name, current) ? 'selected' : ''}>${esc(name)}</option>`).join('');
+}
+
 function libraryView() {
   const uploading = state.uploads.length ? `<section class="upload-list">${state.uploads.map(uploadRow).join('')}</section>` : '';
   const localTypes = state.localUploadTypes || null;
@@ -226,18 +259,18 @@ function libraryView() {
       ${trashView ? '<div class="notice">Items in Trash are hidden from the main library until you restore them.</div>' : ''}
       ${trashView ? '' : `
       <section class="drop-zone ${state.storageConfigured ? '' : 'disabled'}" id="drop-zone">
-        <div>${icon('upload')}<strong>${dropTitle}</strong><span>${dropHint}</span></div>
+        <div>${icon('upload')}<strong>${dropTitle}</strong><span>${state.filters.folder.trim() ? `Uploads go to <b>${esc(state.filters.folder.trim())}</b> · ` : ''}${dropHint}</span></div>
         <button class="button" data-act="browse" ${state.storageConfigured ? '' : 'disabled'}>Browse Media</button>
       </section>
       ${uploading}`}
       ${bulkBar}
       <section class="toolbar">
-        <label class="search">${icon('search')}<input id="search" placeholder="Search media..." value="${esc(state.filters.search)}"></label>
+        <label class="search">${icon('search')}<input id="search" dir="auto" placeholder="${trashView ? 'Search media...' : 'Search media or folders...'}" value="${esc(state.filters.search)}"></label>
         <select id="type-filter">
           ${typeOptions.map(type => `<option value="${type}" ${state.filters.type === type ? 'selected' : ''}>${type === 'all' ? 'All' : `${type[0].toUpperCase()}${type.slice(1)}s`}</option>`).join('')}
         </select>
-        <input id="folder-filter" placeholder="Folder" value="${esc(state.filters.folder)}">
       </section>
+      ${trashView ? '' : folderStrip()}
       <section class="media-grid" id="media-grid">
         ${state.items.length ? state.items.map(mediaCard).join('') : `<div class="empty">${icon(trashView ? 'trash' : 'image')}<h2>${trashView ? 'Trash is empty' : 'No media yet'}</h2><p>${trashView ? 'Deleted media will appear here.' : localMediaOnly ? 'Upload your first image or video.' : 'Upload your first image, video or document.'}</p></div>`}
       </section>
@@ -247,23 +280,67 @@ function libraryView() {
 }
 
 function render() {
+  // Re-rendering replaces the search box; keep focus and caret so typing isn't interrupted when results arrive.
+  const active = document.activeElement;
+  const searchCaret = active?.id === 'search' ? [active.selectionStart, active.selectionEnd] : null;
   $('#app').innerHTML = state.user ? libraryView() : loginView();
+  if (searchCaret) {
+    const search = $('#search');
+    search?.focus();
+    search?.setSelectionRange(...searchCaret);
+  }
 }
 
-function showFolderDialog() {
+function showFolderDialog(folder = null) {
   const dialog = $('#folder-dialog');
-  dialog.innerHTML = `<form id="folder-form" method="dialog" class="small-dialog">
-    <header class="dialog-head"><h2>New folder</h2><button type="button" class="icon-button" data-act="close-folder-dialog" title="Close">${icon('close')}</button></header>
+  dialog.innerHTML = `<form id="folder-form" method="dialog" class="small-dialog" data-id="${esc(folder?.id || '')}">
+    <header class="dialog-head"><h2>${folder ? 'Edit folder' : 'New folder'}</h2><button type="button" class="icon-button" data-act="close-folder-dialog" title="Close">${icon('close')}</button></header>
     <div class="dialog-body">
-      <label>Folder name<input name="folder" value="${esc(state.filters.folder || '')}" autocomplete="off" required></label>
+      <label>Folder name<input name="name" dir="auto" value="${esc(folder?.name || '')}" maxlength="120" autocomplete="off" required></label>
+      <label>Label<input name="label" dir="auto" value="${esc(folder?.label || '')}" maxlength="40" placeholder="e.g. Website, Social, Ads" autocomplete="off"></label>
       <div class="dialog-actions">
+        ${folder ? `<button type="button" class="button danger folder-delete" data-act="delete-folder" data-id="${esc(folder.id)}">${icon('trash')}Delete</button>` : ''}
         <button type="button" class="button" data-act="close-folder-dialog">Cancel</button>
-        <button class="button primary" value="save">${icon('folder')}Save folder</button>
+        <button class="button primary" value="save">${icon('folder')}${folder ? 'Save folder' : 'Create folder'}</button>
       </div>
     </div>
   </form>`;
   dialog.showModal();
   requestAnimationFrame(() => dialog.querySelector('input')?.focus());
+}
+
+async function saveFolder(form) {
+  const id = form.dataset.id;
+  const previous = id ? state.folders.find(folder => folder.id === id) : null;
+  const body = Object.fromEntries(new FormData(form).entries());
+  const result = await api(id ? `/api/folders/${encodeURIComponent(id)}` : '/api/folders', { method: id ? 'PATCH' : 'POST', body });
+  $('#folder-dialog').close();
+  const opened = !previous || sameFolder(previous.name, state.filters.folder);
+  if (opened) {
+    state.filters.folder = result.folder.name;
+    state.filters.search = '';
+  }
+  await loadFolders();
+  if (opened) await loadMedia(true);
+  toast(previous ? 'Folder saved' : 'Folder created');
+}
+
+async function deleteFolder(id) {
+  const folder = state.folders.find(row => row.id === id);
+  if (!folder) return;
+  $('#folder-dialog').close();
+  const confirmed = await confirmAction({
+    title: 'Delete folder',
+    message: `"${folder.name}" will be deleted. Its ${folder.item_count} item${folder.item_count === 1 ? '' : 's'} stay in the library without a folder.`,
+    confirmLabel: 'Delete folder',
+    danger: true
+  });
+  if (!confirmed) return;
+  await api(`/api/folders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (sameFolder(folder.name, state.filters.folder)) state.filters.folder = '';
+  await loadFolders();
+  await loadMedia(true);
+  toast('Folder deleted');
 }
 
 function confirmAction({ title = 'Are you sure?', message = '', confirmLabel = 'Confirm', danger = false } = {}) {
@@ -308,7 +385,7 @@ async function bootstrap() {
   state.storageDriver = result.storage_driver || 'local';
   state.localUploadTypes = Array.isArray(result.local_upload_types) ? result.local_upload_types : null;
   render();
-  if (state.user) await loadMedia(true);
+  if (state.user) await Promise.all([loadMedia(true), loadFolders()]);
 }
 
 function mediaQuery(reset = false) {
@@ -316,16 +393,19 @@ function mediaQuery(reset = false) {
   if (!reset && state.nextCursor) params.set('cursor', state.nextCursor);
   if (state.view === 'trash') params.set('trash', 'true');
   if (state.filters.type && state.filters.type !== 'all') params.set('type', state.filters.type);
-  if (state.filters.folder.trim()) params.set('folder', state.filters.folder.trim());
+  if (state.view !== 'trash' && state.filters.folder.trim()) params.set('folder', state.filters.folder.trim());
   if (state.filters.search.trim()) params.set('search', state.filters.search.trim());
   return `/api/media?${params}`;
 }
 
 async function loadMedia(reset = false) {
-  if (state.loading) return;
+  // A reset (new search/filter) always runs and supersedes older requests; "load more" waits its turn.
+  if (state.loading && !reset) return;
+  const request = ++state.mediaRequest;
   state.loading = true;
   try {
     const result = await api(mediaQuery(reset), { method: 'GET' });
+    if (request !== state.mediaRequest) return;
     state.items = reset ? result.items || [] : [...state.items, ...(result.items || [])];
     state.nextCursor = result.next_cursor || null;
     if (reset) {
@@ -334,10 +414,20 @@ async function loadMedia(reset = false) {
     }
     render();
   } catch (error) {
-    toast(error.message);
+    if (request === state.mediaRequest) toast(error.message);
   } finally {
-    state.loading = false;
+    if (request === state.mediaRequest) state.loading = false;
   }
+}
+
+async function loadFolders() {
+  const result = await api('/api/folders', { method: 'GET' });
+  state.folders = result.folders || [];
+  render();
+}
+
+function refreshFolders() {
+  loadFolders().catch(() => null);
 }
 
 function clientMediaType(file) {
@@ -370,7 +460,7 @@ function xhrUpload(url, options, onProgress) {
 async function uploadViaBackend(file, upload) {
   const form = new FormData();
   form.append('files', file);
-  if (state.filters.folder.trim()) form.append('folder', state.filters.folder.trim());
+  if (upload.folder) form.append('folder', upload.folder);
   const result = await xhrUpload('/api/media/upload', { method: 'POST', body: form }, progress => {
     upload.progress = progress;
     updateUploadList();
@@ -385,7 +475,7 @@ async function uploadViaPresigned(file, upload) {
       file_name: file.name,
       mime_type: file.type || 'application/octet-stream',
       size_bytes: file.size,
-      folder: state.filters.folder.trim()
+      folder: upload.folder
     }
   });
   await xhrUpload(request.upload_url, {
@@ -398,7 +488,7 @@ async function uploadViaPresigned(file, upload) {
   });
   const result = await api('/api/media/complete', {
     method: 'POST',
-    body: { token: request.token, object_key: request.object_key, folder: state.filters.folder.trim() }
+    body: { token: request.token, object_key: request.object_key, folder: upload.folder }
   });
   return result.item;
 }
@@ -440,6 +530,7 @@ async function processUploadQueue() {
   }
 
   state.uploadProcessing = false;
+  if (successCount) refreshFolders();
   if (successCount && failureCount) toast(`${successCount} uploaded, ${failureCount} failed.`);
   else if (successCount) toast(`${successCount} file${successCount === 1 ? '' : 's'} uploaded.`);
   else if (failureCount) toast('Upload failed.');
@@ -456,7 +547,8 @@ async function uploadFiles(files) {
     toast('Configure media storage before uploading.');
     return;
   }
-  const batchUploads = selected.map(file => ({ file, name: file.name, progress: 0, state: 'Waiting' }));
+  const folder = state.filters.folder.trim();
+  const batchUploads = selected.map(file => ({ file, name: file.name, folder, progress: 0, state: 'Waiting' }));
   state.uploads = [...state.uploads, ...batchUploads];
   state.uploadQueue.push(...batchUploads);
   render();
@@ -495,7 +587,7 @@ async function showDetails(id) {
       <div class="form-grid">
         <label>Title<input name="title" value="${esc(item.title || '')}" ${trashView ? 'disabled' : ''}></label>
         <label>Alt text<input name="alt_text" value="${esc(item.alt_text || '')}" ${trashView ? 'disabled' : ''}></label>
-        <label>Folder<input name="folder" value="${esc(item.folder || '')}" ${trashView ? 'disabled' : ''}></label>
+        <label>Folder<select name="folder" ${trashView ? 'disabled' : ''}><option value="">No folder</option>${folderOptions(item.folder)}</select></label>
         <label>Caption<input name="caption" value="${esc(item.caption || '')}" ${trashView ? 'disabled' : ''}></label>
       </div>
       <label>Description<textarea name="description" ${trashView ? 'disabled' : ''}>${esc(item.description || '')}</textarea></label>
@@ -524,6 +616,7 @@ async function saveDetails(form) {
   state.items = state.items.map(item => item.id === id ? { ...item, ...result.item } : item);
   $('#details').close();
   render();
+  refreshFolders();
   toast('Metadata saved');
 }
 
@@ -540,6 +633,7 @@ async function deleteMedia(id) {
   state.mediaSelection.delete(id);
   $('#details')?.close();
   render();
+  refreshFolders();
   toast('Media moved to Trash');
 }
 
@@ -557,6 +651,7 @@ async function deleteSelectedMedia() {
   state.items = state.items.filter(item => !ids.includes(item.id));
   ids.forEach(id => state.mediaSelection.delete(id));
   render();
+  refreshFolders();
   toast(`${ids.length} item${ids.length === 1 ? '' : 's'} moved to Trash`);
 }
 
@@ -586,6 +681,7 @@ async function restoreMedia(id) {
   state.items = state.items.filter(item => item.id !== id);
   $('#details')?.close();
   render();
+  refreshFolders();
   toast('Media restored');
 }
 
@@ -596,6 +692,7 @@ async function restoreSelectedMedia() {
   state.items = state.items.filter(item => !ids.includes(item.id));
   ids.forEach(id => state.trashSelection.delete(id));
   render();
+  refreshFolders();
   toast(`${ids.length} item${ids.length === 1 ? '' : 's'} restored`);
 }
 
@@ -662,8 +759,14 @@ document.addEventListener('click', async event => {
         await loadMedia(true);
       }
     }
-    if (act === 'new-folder') {
-      showFolderDialog();
+    if (act === 'new-folder') showFolderDialog();
+    if (act === 'edit-folder') showFolderDialog(state.folders.find(folder => folder.id === id));
+    if (act === 'delete-folder') await deleteFolder(id);
+    if (act === 'open-folder') {
+      state.filters.folder = target.dataset.folder || '';
+      state.filters.search = '';
+      render();
+      await loadMedia(true);
     }
     if (act === 'load-more') await loadMedia(false);
     if (act === 'copy-url') {
@@ -732,11 +835,6 @@ document.addEventListener('input', event => {
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => loadMedia(true), 250);
   }
-  if (event.target.id === 'folder-filter') {
-    state.filters.folder = event.target.value;
-    clearTimeout(state.folderTimer);
-    state.folderTimer = setTimeout(() => loadMedia(true), 350);
-  }
 });
 
 document.addEventListener('submit', async event => {
@@ -747,15 +845,10 @@ document.addEventListener('submit', async event => {
       const result = await api('/api/login', { method: 'POST', body: values });
       state.user = result.user;
       render();
-      await loadMedia(true);
+      await Promise.all([loadMedia(true), loadFolders()]);
     }
     if (event.target.id === 'details-form') await saveDetails(event.target);
-    if (event.target.id === 'folder-form') {
-      const folder = new FormData(event.target).get('folder').trim();
-      state.filters.folder = folder;
-      $('#folder-dialog').close();
-      await loadMedia(true);
-    }
+    if (event.target.id === 'folder-form') await saveFolder(event.target);
   } catch (error) {
     toast(error.message);
   }

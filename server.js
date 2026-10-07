@@ -68,6 +68,35 @@ function getPool() {
   return pool;
 }
 
+let folderSchema = null;
+
+// Deploys don't run `npm run migrate`, so the folders table is created on first use.
+function ensureFolderSchema() {
+  if (!folderSchema) {
+    const sql = fs.readFileSync(path.join(ROOT, 'sql', '2026-10-07_app_folders.sql'), 'utf8');
+    folderSchema = getPool().query(sql).catch(error => {
+      folderSchema = null;
+      throw error;
+    });
+  }
+  return folderSchema;
+}
+
+async function withTransaction(work) {
+  const client = await getPool().connect();
+  try {
+    await client.query('begin');
+    const result = await work(client);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => null);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function publicUser(user) {
   if (!user) return null;
   return { id: user.id, name: user.name, email: user.email, role: user.role };
@@ -211,6 +240,7 @@ function mediaSummary(row) {
 }
 
 async function insertMediaRecord(item) {
+  const folder = await ensureFolderRecord(item.folder);
   const result = await getPool().query(
     `insert into app_media
       (file_name, original_file_name, object_key, public_url, media_type, mime_type, extension,
@@ -231,7 +261,7 @@ async function insertMediaRecord(item) {
       item.alt_text || null,
       item.caption || null,
       item.description || null,
-      item.folder || null,
+      folder,
       item.width || null,
       item.height || null,
       item.duration_seconds || null,
@@ -288,11 +318,12 @@ async function listMedia(url) {
   }
   if (folder) {
     params.push(folder);
-    where.push(`folder = $${params.length}`);
+    where.push(`lower(folder) = lower($${params.length})`);
   }
   if (search) {
     params.push(`%${search.replace(/[%_]/g, '\\$&')}%`);
-    where.push(`(file_name ilike $${params.length} escape '\\' or original_file_name ilike $${params.length} escape '\\' or title ilike $${params.length} escape '\\' or alt_text ilike $${params.length} escape '\\' or folder ilike $${params.length} escape '\\')`);
+    where.push(`(file_name ilike $${params.length} escape '\\' or original_file_name ilike $${params.length} escape '\\' or title ilike $${params.length} escape '\\' or alt_text ilike $${params.length} escape '\\' or folder ilike $${params.length} escape '\\'
+      or lower(folder) in (select lower(name) from app_folders where label ilike $${params.length} escape '\\'))`);
   }
   if (cursor) {
     params.push(cursor.created_at, cursor.id);
@@ -333,7 +364,7 @@ async function updateMedia(id, body) {
   const params = [];
   for (const key of allowed) {
     if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
-    params.push(key === 'folder' ? safeFolder(body[key]) : String(body[key] || '').slice(0, 3000));
+    params.push(key === 'folder' ? await ensureFolderRecord(safeFolder(body[key])) : String(body[key] || '').slice(0, 3000));
     updates.push(`${key} = $${params.length}`);
   }
   if (!updates.length) throw statusError(400, 'No supported metadata fields were provided.', 'NO_UPDATES');
@@ -387,6 +418,90 @@ async function permanentlyDeleteMedia(id) {
   } finally {
     client.release();
   }
+}
+
+function cleanFolderLabel(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+function folderRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    label: row.label || '',
+    item_count: Number(row.item_count || 0),
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+// Returns the stored spelling of the folder, creating it if needed, so media rows match the folder list.
+async function ensureFolderRecord(name) {
+  if (!name) return null;
+  const result = await getPool().query(
+    `insert into app_folders (name) values ($1)
+     on conflict ((lower(name))) do update set name = app_folders.name
+     returning name`,
+    [name]
+  );
+  return result.rows[0].name;
+}
+
+async function listFolders() {
+  const result = await getPool().query(
+    `select f.*, count(m.id) filter (where m.deleted_at is null) as item_count
+     from app_folders f
+     left join app_media m on lower(m.folder) = lower(f.name)
+     group by f.id
+     order by lower(f.name)`
+  );
+  return { ok: true, folders: result.rows.map(folderRow) };
+}
+
+async function createFolder(body) {
+  const name = safeFolder(body.name);
+  if (!name) throw statusError(400, 'Folder name is required.', 'FOLDER_NAME_REQUIRED');
+  const result = await getPool().query(
+    `insert into app_folders (name, label) values ($1, $2)
+     on conflict ((lower(name))) do nothing
+     returning *`,
+    [name, cleanFolderLabel(body.label) || null]
+  );
+  if (!result.rows[0]) throw statusError(409, `A folder named "${name}" already exists.`, 'FOLDER_EXISTS');
+  return { ok: true, folder: folderRow(result.rows[0]) };
+}
+
+async function updateFolder(id, body) {
+  return withTransaction(async client => {
+    const current = (await client.query('select * from app_folders where id = $1::uuid for update', [id])).rows[0];
+    if (!current) throw statusError(404, 'Folder not found.', 'FOLDER_NOT_FOUND');
+    const name = Object.prototype.hasOwnProperty.call(body, 'name') ? safeFolder(body.name) : current.name;
+    if (!name) throw statusError(400, 'Folder name is required.', 'FOLDER_NAME_REQUIRED');
+    const label = Object.prototype.hasOwnProperty.call(body, 'label') ? cleanFolderLabel(body.label) || null : current.label;
+    let result;
+    try {
+      result = await client.query(
+        'update app_folders set name = $1, label = $2, updated_at = now() where id = $3::uuid returning *',
+        [name, label, id]
+      );
+    } catch (error) {
+      if (error.code === '23505') throw statusError(409, `A folder named "${name}" already exists.`, 'FOLDER_EXISTS');
+      throw error;
+    }
+    if (name !== current.name) {
+      await client.query('update app_media set folder = $1, updated_at = now() where lower(folder) = lower($2)', [name, current.name]);
+    }
+    return { ok: true, folder: folderRow(result.rows[0]) };
+  });
+}
+
+async function deleteFolder(id) {
+  return withTransaction(async client => {
+    const row = (await client.query('delete from app_folders where id = $1::uuid returning *', [id])).rows[0];
+    if (!row) throw statusError(404, 'Folder not found.', 'FOLDER_NOT_FOUND');
+    await client.query('update app_media set folder = null, updated_at = now() where lower(folder) = lower($1)', [row.name]);
+    return { ok: true, deleted: { id, name: row.name } };
+  });
 }
 
 function parseMultipartUpload(req, user) {
@@ -684,6 +799,20 @@ async function handleApi(req, res) {
   }
 
   const user = currentUser(req);
+  await ensureFolderSchema();
+
+  if (route === '/api/folders' && method === 'GET') return sendJson(req, res, await listFolders());
+  if (route === '/api/folders' && method === 'POST') {
+    if (!canManageMedia(user)) throw statusError(403, 'You do not have permission to manage folders.', 'FORBIDDEN');
+    return sendJson(req, res, await createFolder(await readJson(req)), 201);
+  }
+  const folderMatch = route.match(/^\/api\/folders\/([0-9a-f-]{36})$/i);
+  if (folderMatch && (method === 'PATCH' || method === 'DELETE')) {
+    if (!canManageMedia(user)) throw statusError(403, 'You do not have permission to manage folders.', 'FORBIDDEN');
+    if (method === 'PATCH') return sendJson(req, res, await updateFolder(folderMatch[1], await readJson(req)));
+    return sendJson(req, res, await deleteFolder(folderMatch[1]));
+  }
+
   if (!route.startsWith('/api/media')) throw statusError(404, 'API route not found.', 'NOT_FOUND');
 
   if (route === '/api/media' && method === 'GET') {

@@ -26,9 +26,11 @@ async function main() {
     ssl: /sslmode=require/i.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : undefined
   });
   try {
-    const sql = fs.readFileSync(path.join(__dirname, '..', 'sql', '2026-10-05_app_media.sql'), 'utf8');
-    await pool.query(sql);
-    console.log('Migration applied: sql/2026-10-05_app_media.sql');
+    const dir = path.join(__dirname, '..', 'sql');
+    for (const file of fs.readdirSync(dir).filter(name => name.endsWith('.sql')).sort()) {
+      await pool.query(fs.readFileSync(path.join(dir, file), 'utf8'));
+      console.log(`Migration applied: sql/${file}`);
+    }
   } finally {
     await pool.end();
   }

@@ -93,12 +93,26 @@ p{line-height:1.5;color:var(--muted)}
 .upload-row b{text-align:right;font-size:12px}
 .progress{height:8px;background:var(--preview);border-radius:999px;overflow:hidden}
 .progress span{display:block;height:100%;background:var(--accent)}
-.toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 170px 220px;gap:12px;margin:18px 0}
+.toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 170px;gap:12px;margin:18px 0}
 .search{position:relative;display:block}
 .search .icon{position:absolute;left:13px;top:13px;color:var(--muted)}
 input,select,textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink);min-height:44px;padding:11px 12px}
 .search input{padding-left:40px}
 textarea{min-height:88px;resize:vertical}
+.folder-strip{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 18px}
+.folder-chip{display:flex;align-items:center;min-width:0;max-width:100%;border:1px solid var(--line);background:var(--panel);border-radius:8px}
+.folder-chip.active{border-color:var(--brand);background:var(--brand-soft)}
+.folder-open{display:flex;align-items:center;gap:10px;min-width:0;min-height:52px;padding:8px 14px;background:transparent;color:var(--ink);text-align:left}
+.folder-open .icon{color:var(--brand)}
+.folder-open span{display:grid;min-width:0}
+.folder-open b{font-size:13px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder-open small{font-size:11px;color:var(--muted)}
+.folder-label{flex-shrink:0;font-style:normal;font-size:11px;font-weight:700;color:var(--brand);background:var(--brand-soft);border-radius:999px;padding:3px 9px;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder-chip.active .folder-label{background:var(--panel)}
+.folder-edit{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;margin-right:8px;border-radius:50%;background:transparent;color:var(--muted)}
+.folder-edit:hover{background:var(--preview);color:var(--ink)}
+.folder-edit .icon{width:15px;height:15px}
+.folder-empty{align-self:center;font-size:12px;color:var(--muted)}
 .media-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .media-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:var(--shadow);min-width:0}
 .media-card{position:relative}
@@ -131,7 +145,7 @@ textarea{min-height:88px;resize:vertical}
 .login-theme{position:absolute;right:24px;top:24px}
 .login-panel h1{margin:24px 0 22px}
 .login-panel label,dialog label{display:block;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:14px}
-.login-panel input,dialog input,dialog textarea{margin-top:7px;font-weight:500;color:var(--ink)}
+.login-panel input,dialog input,dialog select,dialog textarea{margin-top:7px;font-weight:500;color:var(--ink)}
 dialog{border:1px solid var(--line);border-radius:8px;padding:0;width:min(980px,calc(100% - 26px));max-height:92dvh;background:var(--panel);color:var(--ink);box-shadow:0 28px 90px rgba(10,20,14,.28)}
 dialog::backdrop{background:rgba(18,29,23,.55)}
 #folder-dialog{width:min(430px,calc(100% - 26px))}
@@ -150,6 +164,7 @@ dialog::backdrop{background:rgba(18,29,23,.55)}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
 .confirm-message{font-size:13px;margin:0;color:var(--muted)}
+.dialog-actions .folder-delete{margin-right:auto}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);background:var(--brand);color:var(--brand-ink);border-radius:8px;padding:12px 16px;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:all .18s;z-index:20}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .offline{min-height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:30px}
@@ -167,7 +182,6 @@ dialog::backdrop{background:rgba(18,29,23,.55)}
   .heading{display:block}
   .heading .actions{margin-top:14px}
   .toolbar{grid-template-columns:1fr 150px}
-  #folder-filter{grid-column:1/-1}
   .media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .details-grid{grid-template-columns:1fr}
 }
