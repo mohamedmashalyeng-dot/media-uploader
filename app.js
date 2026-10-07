@@ -385,6 +385,10 @@ async function bootstrap() {
   state.storageDriver = result.storage_driver || 'local';
   state.localUploadTypes = Array.isArray(result.local_upload_types) ? result.local_upload_types : null;
   render();
+  if (new URLSearchParams(location.search).has('sso')) {
+    history.replaceState(null, '', '/');
+    if (!state.user) toast('That sign-in link expired. Open Download Images from the ORVANN system again.');
+  }
   if (state.user) await Promise.all([loadMedia(true), loadFolders()]);
 }
 

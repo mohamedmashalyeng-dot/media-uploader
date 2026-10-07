@@ -119,11 +119,54 @@ function sessionCookie(req, sid, maxAge = SESSION_TTL_MS / 1000) {
   return `sid=${encodeURIComponent(sid)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`;
 }
 
-function createSession() {
+function createSession(user = { id: 'admin', name: ADMIN_NAME, email: ADMIN_EMAIL, role: 'admin' }) {
   const sid = crypto.randomBytes(32).toString('base64url');
-  const user = { id: 'admin', name: ADMIN_NAME, email: ADMIN_EMAIL, role: 'admin' };
   sessions.set(sid, { user, expiresAt: Date.now() + SESSION_TTL_MS });
   return { sid, user };
+}
+
+// One-click sign-in from the ORVANN system: its assets-sso.php signs a short-lived,
+// single-use ticket with ORVANN_SSO_SECRET, shared only between the two apps.
+const SSO_ROLES = new Set(['admin', 'manager', 'member']);
+const usedSsoTickets = new Map();
+
+function verifySsoTicket(ticket) {
+  const secret = String(process.env.ORVANN_SSO_SECRET || '');
+  if (!secret) throw statusError(503, 'Single sign-on is not configured.', 'SSO_NOT_CONFIGURED');
+  const [payload, signature, extra] = String(ticket || '').split('.');
+  if (!payload || !signature || extra !== undefined) throw statusError(400, 'Sign-in ticket is malformed.', 'SSO_INVALID');
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest();
+  const given = Buffer.from(signature, 'base64url');
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+    throw statusError(401, 'Sign-in ticket signature is invalid.', 'SSO_BAD_SIGNATURE');
+  }
+  const claims = parseBase64urlJson(payload, 'sign-in ticket');
+  const now = Math.floor(Date.now() / 1000);
+  const exp = Number(claims.exp);
+  // 30s of grace for clock drift between the two servers; reject tickets that claim to live long.
+  if (!Number.isFinite(exp) || exp < now - 30 || exp > now + 300) throw statusError(401, 'Sign-in ticket has expired.', 'SSO_EXPIRED');
+  const nonce = String(claims.nonce || '');
+  if (!nonce || usedSsoTickets.has(nonce)) throw statusError(401, 'Sign-in ticket was already used.', 'SSO_REUSED');
+  const role = String(claims.role || '').toLowerCase();
+  const email = String(claims.email || '').trim().toLowerCase();
+  if (!SSO_ROLES.has(role) || !email) throw statusError(403, 'This account cannot use ORVANN Assets.', 'SSO_FORBIDDEN');
+
+  for (const [key, expiresAt] of usedSsoTickets) if (expiresAt < Date.now()) usedSsoTickets.delete(key);
+  usedSsoTickets.set(nonce, (exp + 60) * 1000);
+  return { id: `orvann-${Number(claims.sub) || 0}`, name: String(claims.name || email).slice(0, 191), email, role };
+}
+
+function handleSso(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const headers = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
+  try {
+    const session = createSession(verifySsoTicket(url.searchParams.get('ticket')));
+    res.writeHead(302, { ...headers, Location: '/', 'Set-Cookie': sessionCookie(req, session.sid) });
+  } catch (error) {
+    console.warn(`[sso] ${error.code || 'ERROR'}: ${error.message}`);
+    res.writeHead(302, { ...headers, Location: '/?sso=failed' });
+  }
+  res.end();
 }
 
 function currentUser(req) {
@@ -139,7 +182,7 @@ function currentUser(req) {
 }
 
 function canManageMedia(user) {
-  return ['admin', 'manager', 'staff'].includes(String(user?.role || '').toLowerCase());
+  return ['admin', 'manager', 'member', 'staff'].includes(String(user?.role || '').toLowerCase());
 }
 
 function readJson(req, limitBytes = 1024 * 1024) {
@@ -843,7 +886,10 @@ async function handleApi(req, res) {
 
   const match = route.match(/^\/api\/media\/([0-9a-f-]{36})$/i);
   if (match && method === 'GET') return sendJson(req, res, await getMedia(match[1]), 200, { 'Server-Timing': mediaTiming(started, 'media-query', stageStarted) });
-  if (match && method === 'PATCH') return sendJson(req, res, await updateMedia(match[1], await readJson(req)));
+  if (match && method === 'PATCH') {
+    if (!canManageMedia(user)) throw statusError(403, 'You do not have permission to edit media.', 'FORBIDDEN');
+    return sendJson(req, res, await updateMedia(match[1], await readJson(req)));
+  }
   if (match && method === 'DELETE') {
     if (!canManageMedia(user)) throw statusError(403, 'You do not have permission to delete media.', 'FORBIDDEN');
     if (url.searchParams.get('permanent') === 'true') return sendJson(req, res, await permanentlyDeleteMedia(match[1]));
@@ -953,6 +999,10 @@ function serveStatic(req, res) {
 const server = http.createServer((req, res) => {
   if (String(req.url || '').startsWith('/api/')) {
     handleApi(req, res).catch(error => sendError(req, res, error));
+    return;
+  }
+  if (req.method === 'GET' && String(req.url || '').split('?')[0] === '/sso') {
+    handleSso(req, res);
     return;
   }
   serveStatic(req, res);
